@@ -1,0 +1,40 @@
+# Large CSV files
+*.csv
+*.sampled-*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.coverage
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+temp_*.txt
+*.tmp
+*.log
+
+# Data files (keep structure, ignore data)
+data/*.csv
+data/*.json
+!data/.gitkeep

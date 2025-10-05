@@ -1,0 +1,60 @@
+hashed_email: keep it, hashed email for student and can work as student identifier 
+sand_id: keep it, used in some other table and processes
+email: drop it, repeated
+full_name: keep it
+profile_photo_url: keep it
+bio: keep it 
+skills_list: keep it, comma sep skilles at the begining of the study
+gender: keep it 
+country_of_residence: keep it
+country_of_origin: keep it
+city_of_residence: keep it
+region_name: drop it, unsure why it contains contient names
+education_level_of_study: keep it
+education_field_of_study: keep it 
+country_of_residence_latitude: keep it, this is most propably to be a country node property
+country_of_residence_longitude: keep it this is most propably to be a country node property
+city_of_residence_latitude: keep it, may be part of city node props
+city_of_residence_longitude: keep it, maybe part of city node props
+designation: drop it 
+testimonial: drop it
+is_learning_data: 
+is_featured: 
+youtube_id: 
+is_featured_video: 
+is_graduate_learner: keep it 
+is_active_learner: keep it
+is_a_dropped_out: keep it 
+I suggest that is_graduate_learner and is_active_learner and is_a_dropped_out may be turned into something like learning state node with time tracking like data warhouse so i can know the student state and when he got that state and when it did it end
+learning_details: keep it, this is a sample of values inside this column [{"index":"1","program_name":"Virtual Assistant","cohort_code":"VA-C6","program_start_date":"2024-09-23","program_end_date":"2024-11-26","enrollment_status":"Dropped Out","program_graduation_date":"1970-01-01","lms_overall_score":"0","no_of_assignments":"15","no_of_submissions":"0","no_of_assignment_passed":"0","assignment_completion_rate":"0","no_of_milestone":"7","no_of_milestone_submitted":"0","no_of_milestone_passed":"0","milestone_completion_rate":"0","no_of_test":"8","no_of_test_submitted":"0","no_of_test_passed":"0","test_completion_rate":"0","completion_rate":"0"}]  i think this is a big candidate of being a node
+is_running_a_venture: keep it
+is_a_freelancer: keep it 
+is_wage_employed: keep it
+is_running_a_venture, is_a_freelancer, and is_wage_employed maybe truned out into something like a node with name like professional status and track the changes in a way like slowly changing dims in DWH
+placement_details: keep it, needs some trasformation here's a sample value of placement_details for someone is_wage_employed [{"employment_type":"Full-time","job_start_date":"2022-11-01","organisation_name":"n/a","salary_range":"$0-$500","job_title":"n/a"}] and here's another value for someone that is_running_a_venture [{"business_name":"n/a","job_start_date":"2022-04-01","jobs_created_to_date":15,"capital_secured_todate":0,"female_opp_todate":8}]
+is_placed: keep it, if is_running_a_venture, is_a_freelancer, and is_wage_employed are all = 0 then is_placed = 0, if any of them is = 1 then is_placed=1
+employment_details: keep it
+has_employment_details: keep it 
+education_details: keep it
+has_education_details: keep it
+has_data: 
+is_rural: 
+description_of_living_location: 
+has_disability: 
+type_of_disability: 
+is_from_low_income_household: 
+demographic_details: 
+legacy_points_transaction_history: 
+has_legacy_points_transactions: 
+meta_rn: 
+meta_ui_lat: 
+meta_ui_lng: 
+student_record_ranking: 
+rnk: 
+zoom_attendance_details: 
+circle_events: 
+ehub_check_ins: 
+has_placement_details: 
+has_profile_profile_photo: 
+has_social_economic_data: 
+snapshot_id: 
