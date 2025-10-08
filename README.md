@@ -1,121 +1,273 @@
-# Impact Learners Data Analysis & Neo4j Schema
+# Impact Learners Knowledge Graph
 
-This repository contains data analysis and Neo4j graph database schema design for the Impact Learners platform.
+ETL pipeline to transform Impact Learners CSV data (1.7M rows, 2.5GB) into a Neo4j knowledge graph.
 
-## 📂 Repository Structure
+## Features
+
+- **Test-Driven Development**: 99+ tests with 83% coverage
+- **HYBRID Graph Architecture**: Property references + nodes to avoid supernodes
+- **Temporal State Tracking**: SCD Type 2 pattern for learning/professional states
+- **Resume Capability**: Checkpoint system to resume interrupted ETL runs
+- **Performance Optimized**: Chunked processing, batch operations, Polars for CSV
+- **Rich Progress Tracking**: Real-time progress bars with rate metrics
+- **Data Quality Validation**: Pydantic models with edge case handling
+- **Modular Code**: All files <500 lines, clean architecture
+
+## Quick Start
+
+### 1. Setup
+
+```bash
+# Install dependencies
+uv sync
+
+# Start Neo4j
+docker compose -f docker/docker-compose.yml up -d
+
+# Wait for Neo4j to be ready
+docker compose -f docker/docker-compose.yml ps
+```
+
+### 2. Configure
+
+Edit `config/settings.yaml`:
+
+```yaml
+etl:
+  chunk_size: 10000        # CSV rows per chunk
+  batch_size: 1000         # Neo4j batch size
+  checkpoint_interval: 5000 # Save checkpoint every N rows
+  resume_from_checkpoint: false
+
+neo4j:
+  uri: "bolt://localhost:7687"
+  user: "neo4j"
+  password: "your_password"
+```
+
+### 3. Run ETL
+
+**Using CLI (recommended):**
+
+```bash
+# Run full ETL
+uv run python src/cli.py run
+
+# Resume from checkpoint
+uv run python src/cli.py run --resume
+
+# Check checkpoint status
+uv run python src/cli.py checkpoint-status
+
+# Clear checkpoint
+uv run python src/cli.py checkpoint-clear
+
+# Test Neo4j connection
+uv run python src/cli.py test-connection
+```
+
+**Using Python script:**
+
+```bash
+uv run python src/run_etl.py
+```
+
+## Project Structure
 
 ```
-.
-├── docs/                          # Analysis documentation
-│   ├── employment_analysis_findings.md    # Employment data analysis
-│   └── has_flags_analysis.md             # has_* flags analysis
-├── model/                         # Neo4j schema design
-│   └── ModelIdea.md              # Complete Pydantic models & graph schema
-├── draft/                         # Draft files and column mappings
-│   └── column_names.txt          # Column descriptions and keep/drop decisions
-└── README.md                     # This file
+Impact/
+├── config/
+│   ├── settings.yaml              # ETL configuration
+│   └── country_mapping.json       # Country normalization
+├── data/
+│   ├── raw/                       # Input CSV files
+│   ├── checkpoints/               # Resume checkpoints
+│   ├── logs/                      # Structured logs
+│   └── reports/                   # Quality reports
+├── src/
+│   ├── models/                    # Pydantic data models
+│   │   ├── nodes.py              # 8 node types
+│   │   ├── relationships.py       # 7 relationship types
+│   │   ├── enums.py              # Enum definitions
+│   │   └── parsers.py            # JSON parser models
+│   ├── transformers/              # Data transformation
+│   │   ├── csv_reader.py         # Polars chunked reading
+│   │   ├── field_mapper.py       # CSV → Pydantic mapping
+│   │   ├── geo_normalizer.py     # Country/city normalization
+│   │   ├── skills_parser.py      # Skills extraction
+│   │   ├── state_deriver.py      # State derivation logic
+│   │   ├── date_converter.py     # Date parsing
+│   │   └── json_parser.py        # JSON field parsing
+│   ├── validators/                # Data quality
+│   │   ├── learner_validator.py  # Learner validation
+│   │   ├── relationship_validator.py
+│   │   └── data_quality.py       # Quality metrics
+│   ├── neo4j/                     # Neo4j layer
+│   │   ├── connection.py         # Connection manager
+│   │   ├── cypher_builder.py     # Query builder
+│   │   ├── node_creator.py       # Node creation
+│   │   ├── relationship_creator.py
+│   │   ├── indexes.py            # Schema setup
+│   │   └── batch_ops.py          # Batch operations
+│   ├── etl/                       # ETL pipeline
+│   │   ├── extractor.py          # CSV extraction
+│   │   ├── transformer.py        # Row transformation
+│   │   ├── loader.py             # Neo4j loading
+│   │   ├── checkpoint.py         # Resume system
+│   │   ├── progress.py           # Progress tracking
+│   │   └── pipeline.py           # Orchestrator
+│   ├── utils/                     # Utilities
+│   │   ├── config.py             # Config loader
+│   │   ├── logger.py             # Structured logging
+│   │   └── helpers.py            # Helper functions
+│   ├── cli.py                     # CLI commands
+│   └── run_etl.py                # Main script
+├── tests/
+│   ├── unit/                      # Unit tests (99 tests)
+│   └── integration/               # Integration tests
+├── docs/                          # Documentation & analysis
+├── docker/
+│   └── docker-compose.yml        # Neo4j setup
+└── pyproject.toml                # Project config
 ```
 
-## 📊 Data Analysis
+## Graph Schema
 
-### Employment Analysis
-Comprehensive analysis of 1.6M learner records examining relationships between:
-- `is_wage_employed` (3.32% of learners)
-- `has_employment_details` (18.03% have employment history)
-- `employment_details` (actual employment data)
+### Nodes (8 types)
 
-**Key Finding:** Only 3.32% of learners are currently in wage employment, though 18% have employment history. The difference represents self-employed, freelancers, or previously employed individuals.
+1. **Learner** - Core learner profile
+2. **Country** - Countries (HYBRID approach)
+3. **City** - Cities (HYBRID approach)
+4. **Skill** - Skills and competencies
+5. **Program** - Learning programs/cohorts
+6. **Company** - Employer organizations
+7. **LearningState** - Temporal learning states (SCD Type 2)
+8. **ProfessionalStatus** - Temporal professional states (SCD Type 2)
 
-See [docs/employment_analysis_findings.md](docs/employment_analysis_findings.md)
+### Relationships (7 types)
 
-### has_* Flags Analysis
-Analysis of all 8 `has_*` boolean flags in the dataset:
+1. **RESIDES_IN** - Learner → Country/City
+2. **FROM_COUNTRY** - Learner → Country
+3. **HAS_SKILL** - Learner → Skill (with proficiency)
+4. **ENROLLED_IN** - Learner → Program (with scores)
+5. **WORKS_FOR** - Learner → Company (with dates)
+6. **HAS_LEARNING_STATE** - Learner → LearningState (temporal)
+7. **HAS_PROFESSIONAL_STATUS** - Learner → ProfessionalStatus (temporal)
 
-| Flag | Reliability | Accuracy |
-|------|-------------|----------|
-| `has_profile_profile_photo` | ✓✓ Highly Reliable | 100% |
-| `has_data` | ✓ Reliable | 95.12% |
-| `has_employment_details` | ✓ Reliable | ~100%* |
-| `has_education_details` | ✓ Reliable | ~100%* |
-| `has_social_economic_data` | ✗ Unreliable | 43.83% |
+## Development
 
-*When accounting for `"[]"` as empty JSON arrays
+### Running Tests
 
-See [docs/has_flags_analysis.md](docs/has_flags_analysis.md)
+```bash
+# All tests
+uv run pytest
 
-## 🗂️ Neo4j Graph Schema
+# With coverage
+uv run pytest --cov=src --cov-report=html
 
-Complete graph database schema design using Pydantic models with:
-- **8 Node Types:** Learner, Country, City, Skill, Program, Company, LearningState, ProfessionalStatus
-- **7 Relationship Types:** HAS_SKILL, ENROLLED_IN, WORKS_FOR, RUNS_VENTURE, IN_LEARNING_STATE, HAS_PROFESSIONAL_STATUS, IN_COUNTRY
-- **Temporal State Tracking:** SCD Type 2 pattern for tracking learning and professional status changes over time
-- **HYBRID Geographic Approach:** Avoids supernodes by using property references for countries/cities
+# Specific test file
+uv run pytest tests/unit/test_models.py -v
+```
 
-See [model/ModelIdea.md](model/ModelIdea.md)
+### Code Quality
 
-## 🎯 Key Features
+```bash
+# Ruff linting
+uv run ruff check src/
+
+# Auto-fix issues
+uv run ruff check src/ --fix
+
+# Dead code detection
+uv run vulture src/ --min-confidence 80
+
+# Type checking
+uv run mypy src/
+```
+
+## Key Design Decisions
+
+### HYBRID Country/City Approach
+
+**Problem**: Countries/cities would become supernodes (millions of connections)
+
+**Solution**: Store country codes and city IDs as properties on Learner nodes, but also create Country/City nodes for metadata and traversal.
+
+```cypher
+// Find learners by country (using property - fast)
+MATCH (l:Learner {countryOfResidenceCode: "EG"})
+
+// Get country metadata (using node)
+MATCH (c:Country {code: "EG"})
+RETURN c.name, c.region
+```
 
 ### Temporal State Tracking (SCD Type 2)
-Innovative approach to track state transitions over time:
-- **Learning States:** Active → Dropped Out → Graduate
-- **Professional Status:** Unemployed → Wage Employed → Entrepreneur
 
-### Dual Schema Employment Handling
-Properly handles two different `placement_details` schemas:
-- **Wage/Freelance:** employment_type, salary_range, job_title
-- **Venture:** jobs_created, capital_secured, female_opportunities
+Learning states and professional statuses change over time. We use temporal nodes with validity periods:
 
-### Rich Relationship Properties
-Relationships carry detailed metrics:
-- `ENROLLED_IN`: 20+ properties (scores, completion rates, assignment metrics)
-- `WORKS_FOR`: employment history, salary range, duration
-- `RUNS_VENTURE`: impact metrics (jobs created, capital secured)
+```cypher
+MATCH (l:Learner)-[r:HAS_LEARNING_STATE]->(s:LearningState)
+WHERE r.validFrom <= date() AND (r.validTo IS NULL OR r.validTo >= date())
+RETURN s.state
+```
 
-## 📈 Expected Graph Scale
+### Edge Case Handling
 
-Based on 1.6M learner dataset:
-- **Nodes:** ~5-6M total
-- **Relationships:** ~10-12M total
-- **Learners:** 1,597,198
-- **Companies:** ~50K-100K
-- **Programs:** ~50-100
-- **Skills:** ~500-1,000
+- **-99 values**: Sentinel for missing data → converted to NULL
+- **1970-01-01 dates**: Invalid date marker → converted to NULL
+- **Empty JSON arrays "[]"**: Properly distinguished from missing data
+- **has_* flags**: Analysis showed only 2/8 flags are reliable (see [docs/has_flags_analysis.md](docs/has_flags_analysis.md))
 
-## 🚀 Getting Started
+## Performance
 
-### Prerequisites
-- Neo4j 4.x or 5.x (for implementing the graph schema)
-- Python 3.8+ with pandas, pydantic (for ETL development)
+- **CSV Reading**: Polars with 10K row chunks
+- **Neo4j Writes**: UNWIND batch operations (1K records/batch)
+- **Memory**: Streaming architecture, low memory footprint
+- **Expected Rate**: ~1000-2000 rows/second
+- **Total Time**: ~15-30 minutes for 1.7M rows
 
-## 📝 Notes
+## Troubleshooting
 
-- CSV data files are excluded from git (see `.gitignore`)
-- All analysis performed on 2.5GB dataset with 1.6M records
-- Chunked processing used to manage memory (100K rows per chunk)
+### Neo4j Connection Failed
 
-## 🔗 SQL to Neo4j Mapping
+```bash
+# Check Neo4j is running
+docker compose -f docker/docker-compose.yml ps
 
-Complete mapping documentation available in [model/ModelIdea.md](model/ModelIdea.md) including:
-- Column-by-column transformation logic
-- ETL helper functions
-- Validation functions
-- Example transformations
+# View logs
+docker compose -f docker/docker-compose.yml logs neo4j
 
-## 📊 Data Quality Insights
+# Restart
+docker compose -f docker/docker-compose.yml restart neo4j
+```
 
-- `has_data` flag: 95% accurate, indicates demographic data presence
-- `has_employment_details`: Reliable indicator of employment history
-- `has_social_economic_data`: Unreliable (44% accuracy), do not use
-- Empty JSON arrays (`"[]"`) are stored as data, not NULL
+### ETL Interrupted
 
-## 🏗️ Architecture Decisions
+```bash
+# Check checkpoint
+uv run python src/cli.py checkpoint-status
 
-1. **HYBRID Geographic Approach:** Store country/city codes as properties to avoid supernodes
-2. **Temporal Nodes:** Separate nodes for state tracking enable time-series analysis
-3. **Rich Relationships:** Store metrics on relationships, not separate nodes
-4. **Flexible Employment:** Different relationship types for wage vs venture employment
+# Resume
+uv run python src/cli.py run --resume
+```
 
----
+### Out of Memory
 
-**Dataset:** impact_learners_profile-1759316791571.csv (1,597,198 records)
-**Analysis Date:** October 2025
+Reduce chunk size in `config/settings.yaml`:
+
+```yaml
+etl:
+  chunk_size: 5000  # Reduced from 10000
+  batch_size: 500   # Reduced from 1000
+```
+
+## Documentation
+
+- [docs/has_flags_analysis.md](docs/has_flags_analysis.md) - Analysis of has_* flags reliability
+- [docs/employment_analysis_findings.md](docs/employment_analysis_findings.md) - Employment data patterns
+- [docs/ModelIdea.md](docs/ModelIdea.md) - Complete graph schema design
+
+## License
+
+MIT

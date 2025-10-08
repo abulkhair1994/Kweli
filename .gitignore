@@ -13,6 +13,7 @@ env/
 *.egg-info/
 .pytest_cache/
 .coverage
+htmlcov/
 
 # OS files
 .DS_Store
@@ -35,6 +36,17 @@ temp_*.txt
 *.log
 
 # Data files (keep structure, ignore data)
-data/*.csv
-data/*.json
-!data/.gitkeep
+data/raw/*.csv
+data/logs/*.log
+data/logs/*.json
+data/reports/*
+data/checkpoints/*.json
+!data/**/.gitkeep
+
+# Environment
+.env
+.env.local
+
+# Docker volumes
+docker/neo4j/data/
+docker/neo4j/logs/

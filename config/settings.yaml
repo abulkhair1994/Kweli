@@ -1,0 +1,76 @@
+# Impact Learners ETL Configuration
+
+etl:
+  chunk_size: 10000  # Rows to process per chunk
+  batch_size: 1000   # Records to send to Neo4j per batch
+  max_workers: 4     # Parallel workers for processing
+
+  # Resume capability
+  enable_checkpoints: true
+  checkpoint_interval: 5000  # Save checkpoint every N rows
+
+  # Progress tracking
+  enable_progress_bar: true
+  log_interval: 1000  # Log progress every N rows
+
+neo4j:
+  # Connection details
+  uri: "bolt://localhost:7688"
+  user: "neo4j"
+  password: "password123"
+
+  # Connection pooling
+  max_connection_pool_size: 50
+  connection_timeout: 30  # seconds
+  max_transaction_retry_time: 30  # seconds
+
+  # Batch operations
+  batch_size: 1000
+  batch_timeout: 60  # seconds
+
+validation:
+  # Data quality thresholds
+  max_error_rate: 0.05  # 5% max errors allowed
+  required_fields:
+    - sand_id
+    - hashed_email
+    - full_name
+
+  # Date validation
+  min_year: 1970
+  max_year: 2030
+  invalid_date_markers:
+    - "1970-01-01"
+    - "9999-12-31"
+
+  # Numeric validation
+  missing_value_markers:
+    - -99
+    - "-99"
+
+transformers:
+  # Skills parsing
+  skills:
+    delimiter: ","
+    normalize: true
+    max_skills_per_learner: 50
+
+  # Geographic data
+  geography:
+    use_hybrid_approach: true  # Store as property + create nodes
+    normalize_country_codes: true
+
+  # Temporal state tracking
+  temporal:
+    enable_learning_state_tracking: true
+    enable_professional_status_tracking: true
+    default_snapshot_date: "2025-10-06"
+
+logging:
+  level: INFO
+  format: json
+  handlers:
+    - type: file
+      filename: "data/logs/etl_{timestamp}.log"
+    - type: console
+      stream: stdout
