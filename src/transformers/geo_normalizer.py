@@ -21,6 +21,8 @@ class GeoNormalizer:
     def __init__(
         self,
         country_mapping_path: Path | str = "config/country_mapping.json",
+        strict_validation: bool = False,
+        auto_generate_codes: bool = True,
         logger: FilteringBoundLogger | None = None,
     ) -> None:
         """
@@ -28,10 +30,17 @@ class GeoNormalizer:
 
         Args:
             country_mapping_path: Path to country mapping JSON
+            strict_validation: If True, fail on unmapped countries instead of auto-generating
+            auto_generate_codes: If True, auto-generate codes from first 2 letters (fallback)
             logger: Optional logger instance
         """
         self.logger = logger or get_logger(__name__)
         self.country_mapping = ConfigLoader.load_country_mapping(country_mapping_path)
+        self.strict_validation = strict_validation
+        self.auto_generate_codes = auto_generate_codes
+
+        # Track unmapped countries for reporting
+        self.unmapped_countries: set[str] = set()
 
     def normalize_country_code(self, country_name: str | None) -> str | None:
         """
@@ -42,6 +51,9 @@ class GeoNormalizer:
 
         Returns:
             ISO country code or None
+
+        Raises:
+            ValueError: If strict_validation=True and country not in mapping
 
         Examples:
             "Egypt" -> "EG"
@@ -61,9 +73,35 @@ class GeoNormalizer:
             if name.lower() == normalized_name.lower():
                 return code.upper()
 
-        # If not found, log warning and return first 2 letters
-        self.logger.warning("Country not found in mapping", country=country_name)
-        return normalized_name[:2].upper()
+        # Country not found in mapping
+        self.unmapped_countries.add(country_name)
+
+        if self.strict_validation:
+            # STRICT MODE: Fail explicitly
+            self.logger.error(
+                "Country not found in mapping (strict mode)",
+                country=country_name,
+                normalized=normalized_name,
+            )
+            raise ValueError(
+                f"Country '{country_name}' not found in mapping. "
+                "Add it to country_mapping.json or disable strict_validation."
+            )
+
+        # LENIENT MODE: Log warning and potentially auto-generate
+        self.logger.warning(
+            "Country not found in mapping",
+            country=country_name,
+            normalized=normalized_name,
+            auto_generate=self.auto_generate_codes,
+        )
+
+        if self.auto_generate_codes:
+            # Fallback: use first 2 letters (legacy behavior)
+            return normalized_name[:2].upper()
+
+        # Return None if auto-generation is disabled
+        return None
 
     def create_country_node(
         self,

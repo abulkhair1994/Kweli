@@ -7,10 +7,10 @@ Manages connection pool, transactions, and health checks.
 import os
 from typing import Any
 
-from structlog.types import FilteringBoundLogger
-
 from neo4j import Driver, GraphDatabase, Session
 from neo4j.exceptions import ServiceUnavailable
+from structlog.types import FilteringBoundLogger
+
 from utils.logger import get_logger
 
 

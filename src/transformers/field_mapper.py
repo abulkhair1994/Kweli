@@ -6,7 +6,6 @@ Maps CSV columns to LearnerNode and related entities.
 
 from typing import Any
 
-import polars as pl
 from structlog.types import FilteringBoundLogger
 
 from models.enums import Gender
@@ -65,20 +64,6 @@ class FieldMapper:
             # Metadata
             "snapshot_id": row.get("snapshot_id"),
         }
-
-    def map_polars_row_to_dict(self, row: pl.DataFrame) -> dict[str, Any]:
-        """
-        Map Polars DataFrame row to dictionary.
-
-        Args:
-            row: Single-row Polars DataFrame
-
-        Returns:
-            Dictionary for mapping
-        """
-        # Convert Polars row to Python dict
-        row_dict = row.to_dicts()[0]
-        return self.map_csv_row_to_dict(row_dict)
 
     def _map_gender(self, value: str | None) -> Gender | None:
         """Map gender string to Gender enum."""

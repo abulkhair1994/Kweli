@@ -33,8 +33,8 @@ class CypherBuilder:
             Tuple of (query, parameters)
         """
         query = """
-        MERGE (l:Learner {sandId: $sand_id})
-        SET l.hashedEmail = $hashed_email,
+        MERGE (l:Learner {hashedEmail: $hashed_email})
+        SET l.sandId = $sand_id,
             l.fullName = $full_name,
             l.profilePhotoUrl = $profile_photo_url,
             l.bio = $bio,

@@ -2,8 +2,9 @@
 
 from datetime import date
 
-from models.enums import EmploymentType, EnrollmentStatus
+from models.enums import EmploymentType, EnrollmentStatus, ProfessionalStatus
 from models.nodes import LearnerNode
+from models.parsers import EmploymentDetailsEntry
 from models.relationships import EnrolledInRelationship, WorksForRelationship
 from validators.data_quality import DataQualityChecker, QualityMetrics
 from validators.learner_validator import LearnerValidator, ValidationResult
@@ -130,6 +131,122 @@ class TestLearnerValidator:
         learner, errors = validator.try_create_learner_node(data)
         assert learner is None
         assert len(errors) > 0
+
+    def test_validate_employment_consistency_unemployed_with_current_job(self) -> None:
+        """Test validation catches unemployed status with current job."""
+        validator = LearnerValidator()
+        learner = LearnerNode(
+            sand_id="SAND123",
+            hashed_email="hash123",
+            full_name="Test User",
+            current_professional_status=ProfessionalStatus.UNEMPLOYED,
+        )
+        employment_entries = [
+            EmploymentDetailsEntry(
+                index="1",
+                organization_name="Test Company",
+                start_date="2022-01-01",
+                end_date="9999-12-31",
+                country="US",
+                job_title="Engineer",
+                is_current="1",
+                duration_in_years="2",
+            )
+        ]
+
+        warnings = validator.validate_employment_consistency(learner, employment_entries)
+        assert len(warnings) > 0
+        assert "Unemployed" in warnings[0]
+        assert "Test Company" in warnings[0]
+
+    def test_validate_employment_consistency_employed_without_job(self) -> None:
+        """Test validation catches employed status without current job."""
+        validator = LearnerValidator()
+        learner = LearnerNode(
+            sand_id="SAND123",
+            hashed_email="hash123",
+            full_name="Test User",
+            current_professional_status=ProfessionalStatus.WAGE_EMPLOYED,
+        )
+        employment_entries = [
+            EmploymentDetailsEntry(
+                index="1",
+                organization_name="Past Company",
+                start_date="2020-01-01",
+                end_date="2021-12-31",
+                country="US",
+                job_title="Engineer",
+                is_current="0",
+                duration_in_years="2",
+            )
+        ]
+
+        warnings = validator.validate_employment_consistency(learner, employment_entries)
+        assert len(warnings) > 0
+        assert "Wage Employed" in warnings[0]
+        assert "no current jobs" in warnings[0]
+
+    def test_validate_employment_consistency_no_warnings(self) -> None:
+        """Test validation passes when status and employment match."""
+        validator = LearnerValidator()
+        learner = LearnerNode(
+            sand_id="SAND123",
+            hashed_email="hash123",
+            full_name="Test User",
+            current_professional_status=ProfessionalStatus.WAGE_EMPLOYED,
+        )
+        employment_entries = [
+            EmploymentDetailsEntry(
+                index="1",
+                organization_name="Current Company",
+                start_date="2022-01-01",
+                end_date="9999-12-31",
+                country="US",
+                job_title="Engineer",
+                is_current="1",
+                duration_in_years="2",
+            )
+        ]
+
+        warnings = validator.validate_employment_consistency(learner, employment_entries)
+        assert len(warnings) == 0
+
+    def test_validate_employment_consistency_multiple_jobs_same_date(self) -> None:
+        """Test validation detects multiple jobs starting on same date."""
+        validator = LearnerValidator()
+        learner = LearnerNode(
+            sand_id="SAND123",
+            hashed_email="hash123",
+            full_name="Test User",
+            current_professional_status=ProfessionalStatus.MULTIPLE,
+        )
+        employment_entries = [
+            EmploymentDetailsEntry(
+                index="1",
+                organization_name="Company A",
+                start_date="2022-01-01",
+                end_date="9999-12-31",
+                country="US",
+                job_title="Consultant",
+                is_current="1",
+                duration_in_years="2",
+            ),
+            EmploymentDetailsEntry(
+                index="2",
+                organization_name="Company B",
+                start_date="2022-01-01",
+                end_date="9999-12-31",
+                country="US",
+                job_title="Advisor",
+                is_current="1",
+                duration_in_years="2",
+            ),
+        ]
+
+        warnings = validator.validate_employment_consistency(learner, employment_entries)
+        assert len(warnings) == 1
+        assert "INFO" in warnings[0]
+        assert "same date" in warnings[0]
 
 
 class TestRelationshipValidator:

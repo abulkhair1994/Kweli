@@ -11,7 +11,6 @@ from pydantic import ValidationError
 from structlog.types import FilteringBoundLogger
 
 from models.parsers import (
-    EducationDetailsEntry,
     EmploymentDetailsEntry,
     LearningDetailsEntry,
     PlacementDetailsVenture,
@@ -144,34 +143,6 @@ class JSONParser:
             except ValidationError as e:
                 self.logger.warning(
                     "Failed to validate employment details entry",
-                    item=item,
-                    error=str(e),
-                )
-
-        return entries
-
-    def parse_education_details(self, value: str | None) -> list[EducationDetailsEntry]:
-        """
-        Parse education_details JSON array.
-
-        Args:
-            value: JSON string
-
-        Returns:
-            List of parsed EducationDetailsEntry objects
-        """
-        parsed = self.parse_json_field(value)
-        if not parsed:
-            return []
-
-        entries: list[EducationDetailsEntry] = []
-        for item in parsed:
-            try:
-                entry = EducationDetailsEntry(**item)
-                entries.append(entry)
-            except ValidationError as e:
-                self.logger.warning(
-                    "Failed to validate education details entry",
                     item=item,
                     error=str(e),
                 )

@@ -136,11 +136,3 @@ def get_settings(config_path: Path | str | None = None) -> Settings:
         loader = ConfigLoader(config_path or "config/settings.yaml")
         _settings = loader.load()
     return _settings
-
-
-def reload_settings(config_path: Path | str | None = None) -> Settings:
-    """Reload settings from file."""
-    global _settings
-    loader = ConfigLoader(config_path or "config/settings.yaml")
-    _settings = loader.load()
-    return _settings

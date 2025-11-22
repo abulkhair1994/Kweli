@@ -9,7 +9,9 @@ from typing import Any
 from pydantic import ValidationError
 from structlog.types import FilteringBoundLogger
 
+from models.enums import ProfessionalStatus
 from models.nodes import LearnerNode
+from models.parsers import EmploymentDetailsEntry
 from utils.logger import get_logger
 
 
@@ -47,7 +49,7 @@ class LearnerValidator:
             logger: Optional logger instance
         """
         self.logger = logger or get_logger(__name__)
-        self.required_fields = required_fields or ["sand_id", "hashed_email", "full_name"]
+        self.required_fields = required_fields or ["hashed_email", "full_name"]
 
     def validate_learner_data(self, data: dict[str, Any]) -> ValidationResult:
         """
@@ -98,9 +100,6 @@ class LearnerValidator:
         result = ValidationResult()
 
         # Validate required fields
-        if not learner.sand_id:
-            result.add_error("sand_id is required")
-
         if not learner.hashed_email:
             result.add_error("hashed_email is required")
 
@@ -121,6 +120,76 @@ class LearnerValidator:
                 )
 
         return result
+
+    def validate_employment_consistency(
+        self,
+        learner: LearnerNode,
+        employment_entries: list[EmploymentDetailsEntry] | None = None,
+    ) -> list[str]:
+        """
+        Validate consistency between professional status and employment relationships.
+
+        This check helps identify data quality issues where the professional status
+        contradicts the actual employment records.
+
+        Args:
+            learner: LearnerNode instance
+            employment_entries: List of employment detail entries (if available)
+
+        Returns:
+            List of warning messages (empty if no issues found)
+        """
+        warnings: list[str] = []
+
+        # If no employment entries provided, can't validate
+        if employment_entries is None:
+            return warnings
+
+        # Count current jobs
+        current_jobs = [entry for entry in employment_entries if entry.is_current == "1"]
+        current_job_count = len(current_jobs)
+
+        # Check 1: Unemployed but has current jobs
+        if learner.current_professional_status == ProfessionalStatus.UNEMPLOYED and current_job_count > 0:
+            org_names = [job.organization_name for job in current_jobs]
+            warnings.append(
+                f"Professional status is 'Unemployed' but learner has {current_job_count} current job(s): {', '.join(org_names)}"
+            )
+
+        # Check 2: Employed but no current jobs
+        employed_statuses = {
+            ProfessionalStatus.WAGE_EMPLOYED,
+            ProfessionalStatus.FREELANCER,
+            ProfessionalStatus.MULTIPLE,
+            ProfessionalStatus.ENTREPRENEUR,
+        }
+        if learner.current_professional_status in employed_statuses and current_job_count == 0:
+            # Get status value (handle both enum and string)
+            status_str = (
+                learner.current_professional_status.value
+                if isinstance(learner.current_professional_status, ProfessionalStatus)
+                else str(learner.current_professional_status)
+            )
+            # Check if they have any past employment
+            if len(employment_entries) > 0:
+                warnings.append(
+                    f"Professional status is '{status_str}' but has no current jobs (has {len(employment_entries)} past job(s))"
+                )
+            else:
+                warnings.append(
+                    f"Professional status is '{status_str}' but has no employment records"
+                )
+
+        # Check 3: Multiple current jobs on same date (info, not warning)
+        if current_job_count > 1:
+            start_dates = [job.start_date for job in current_jobs]
+            # Check if all start dates are the same
+            if len(set(start_dates)) == 1:
+                warnings.append(
+                    f"INFO: {current_job_count} current jobs all started on same date ({start_dates[0]}) - may be legitimate consulting/part-time work"
+                )
+
+        return warnings
 
     def try_create_learner_node(self, data: dict[str, Any]) -> tuple[LearnerNode | None, list[str]]:
         """

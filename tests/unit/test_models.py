@@ -368,15 +368,14 @@ class TestParserModels:
 class TestValidationErrors:
     """Test validation errors for required fields."""
 
-    def test_learner_node_missing_required_fields(self) -> None:
-        """Test LearnerNode raises error when required fields missing."""
-        with pytest.raises(ValidationError) as exc_info:
-            LearnerNode()  # Missing all required fields
-
-        errors = exc_info.value.errors()
-        required_fields = {"sand_id", "hashed_email", "full_name"}
-        error_fields = {err["loc"][0] for err in errors}
-        assert required_fields.issubset(error_fields)
+    def test_learner_node_requires_hashed_email(self) -> None:
+        """Test LearnerNode requires hashed_email (primary identifier)."""
+        # hashed_email is now the required primary unique identifier
+        # sand_id is optional (legacy field)
+        learner = LearnerNode(hashed_email="test@example.com")
+        assert learner.hashed_email == "test@example.com"
+        assert learner.sand_id is None
+        assert learner.full_name is None
 
     def test_country_node_missing_code(self) -> None:
         """Test CountryNode requires code."""

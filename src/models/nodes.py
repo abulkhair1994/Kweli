@@ -20,9 +20,10 @@ class LearnerNode(BaseModel):
     to avoid supernode problems (millions of learners → same country).
     """
 
-    # Primary Identifiers
-    sand_id: str | None = Field(None, description="Primary unique identifier")
-    hashed_email: str | None = Field(None, description="Hashed email identifier")
+    # Primary Identifier
+    hashed_email: str = Field(..., description="PRIMARY unique identifier - hashed email per learner")
+    # Legacy/Secondary Identifier
+    sand_id: str | None = Field(None, description="Legacy identifier (not unique per learner)")
 
     # Profile
     full_name: str | None = Field(None, description="Full name")

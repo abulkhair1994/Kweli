@@ -10,7 +10,7 @@ import click
 import yaml
 
 from etl.checkpoint import Checkpoint
-from etl.pipeline import ETLPipeline
+from etl.two_phase_pipeline import TwoPhaseETLPipeline
 from neo4j_ops.connection import Neo4jConnection
 from neo4j_ops.indexes import setup_indexes
 from utils.logger import get_logger
@@ -83,14 +83,14 @@ def run(csv_path: Path, config: Path, resume: bool, progress: bool):
             if resume:
                 click.echo("Resume mode: ON")
 
-            pipeline = ETLPipeline(
+            pipeline = TwoPhaseETLPipeline(
                 csv_path=csv_path,
                 connection=connection,
                 chunk_size=etl_cfg.get("chunk_size", 10000),
                 batch_size=etl_cfg.get("batch_size", 1000),
+                num_workers=1,  # Use 1 worker to avoid Neo4j deadlocks in Phase 2
                 checkpoint_interval=etl_cfg.get("checkpoint_interval", 5000),
                 enable_progress_bar=progress,
-                resume_from_checkpoint=resume,
                 logger=logger,
             )
 
@@ -186,6 +186,86 @@ def test_connection(config: Path):
 
     except Exception as e:
         click.echo(f"❌ Connection failed: {e}", err=True)
+        raise click.Abort() from e
+
+
+@cli.command()
+@click.option(
+    "--config",
+    type=click.Path(exists=True, path_type=Path),
+    default=Path("config/settings.yaml"),
+    help="Path to config file",
+)
+@click.confirmation_option(
+    prompt="⚠️  This will delete ALL data in Neo4j. Are you sure?"
+)
+def clear_database(config: Path):
+    """Clear all nodes and relationships from Neo4j database."""
+    logger = get_logger(__name__)
+
+    with open(config) as f:
+        cfg = yaml.safe_load(f)
+
+    neo4j_cfg = cfg.get("neo4j", {})
+
+    try:
+        connection = Neo4jConnection(
+            uri=neo4j_cfg.get("uri", "bolt://localhost:7687"),
+            user=neo4j_cfg.get("user", "neo4j"),
+            password=neo4j_cfg.get("password", "password"),
+        )
+
+        with connection:
+            if not connection.health_check():
+                click.echo("❌ Neo4j health check failed", err=True)
+                raise click.Abort()
+
+            click.echo("Clearing database...")
+
+            # Count nodes before deletion
+            count_query = "MATCH (n) RETURN count(n) as count"
+            result = connection.execute_query(count_query)
+            node_count = result[0]["count"] if result else 0
+
+            click.echo(f"Found {node_count:,} nodes")
+
+            # Delete all relationships first (in batches to avoid memory issues)
+            click.echo("Deleting all relationships...")
+            batch_size = 10000
+            deleted_rels = 0
+            while True:
+                rel_query = f"MATCH ()-[r]->() WITH r LIMIT {batch_size} DELETE r RETURN count(r) as deleted"
+                result = connection.execute_query(rel_query)
+                count = result[0]["deleted"] if result else 0
+                deleted_rels += count
+                if count == 0:
+                    break
+                click.echo(f"  Deleted {deleted_rels:,} relationships...")
+
+            # Delete all nodes (in batches to avoid memory issues)
+            click.echo("Deleting all nodes...")
+            deleted_nodes = 0
+            while True:
+                node_query = f"MATCH (n) WITH n LIMIT {batch_size} DELETE n RETURN count(n) as deleted"
+                result = connection.execute_query(node_query)
+                count = result[0]["deleted"] if result else 0
+                deleted_nodes += count
+                if count == 0:
+                    break
+                click.echo(f"  Deleted {deleted_nodes:,} nodes...")
+
+            # Verify deletion
+            result = connection.execute_query(count_query)
+            remaining = result[0]["count"] if result else 0
+
+            if remaining == 0:
+                click.echo("✓ Database cleared successfully")
+                logger.info("Database cleared", nodes_deleted=node_count)
+            else:
+                click.echo(f"⚠️  {remaining} nodes remaining", err=True)
+
+    except Exception as e:
+        click.echo(f"❌ Failed to clear database: {e}", err=True)
         raise click.Abort() from e
 
 

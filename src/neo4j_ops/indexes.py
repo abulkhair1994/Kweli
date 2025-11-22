@@ -43,9 +43,7 @@ class IndexManager:
     def _create_constraints(self) -> None:
         """Create uniqueness constraints."""
         constraints = [
-            # Learner constraints
-            "CREATE CONSTRAINT learner_sand_id IF NOT EXISTS "
-            "FOR (l:Learner) REQUIRE l.sandId IS UNIQUE",
+            # Learner constraint (hashedEmail is primary unique identifier)
             "CREATE CONSTRAINT learner_hashed_email IF NOT EXISTS "
             "FOR (l:Learner) REQUIRE l.hashedEmail IS UNIQUE",
             # Country constraint

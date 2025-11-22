@@ -3,7 +3,7 @@
 etl:
   chunk_size: 10000  # Rows to process per chunk
   batch_size: 1000   # Records to send to Neo4j per batch
-  max_workers: 4     # Parallel workers for processing
+  num_workers: 4     # Parallel workers for batch flushing (2-8 recommended)
 
   # Resume capability
   enable_checkpoints: true
@@ -20,7 +20,7 @@ neo4j:
   password: "password123"
 
   # Connection pooling
-  max_connection_pool_size: 50
+  max_connection_pool_size: 100  # Increased for parallel operations (num_workers * 10+)
   connection_timeout: 30  # seconds
   max_transaction_retry_time: 30  # seconds
 
@@ -59,6 +59,9 @@ transformers:
   geography:
     use_hybrid_approach: true  # Store as property + create nodes
     normalize_country_codes: true
+    strict_country_validation: false  # Fail on unmapped countries (recommended: true for production)
+    auto_generate_codes: true  # Fallback to [:2] for unmapped countries (disable in strict mode)
+    required_mapping_coverage: 0.95  # Warn if <95% of countries are mapped
 
   # Temporal state tracking
   temporal:

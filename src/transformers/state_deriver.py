@@ -2,6 +2,7 @@
 State deriver for learning and professional status.
 
 Derives temporal state from boolean flags (is_active_learner, is_graduate_learner, etc.)
+and from employment_details JSON (which is more accurate than flags).
 """
 
 from datetime import date
@@ -80,34 +81,48 @@ class StateDeriver:
         is_venture: int | bool | None,
         is_freelancer: int | bool | None,
         is_wage: int | bool | None,
+        current_job_count: int = 0,
     ) -> ProfessionalStatus:
         """
-        Derive professional status from flags.
+        Derive professional status from current job count (preferred) or flags (fallback).
 
-        Logic:
-        - Count how many are 1
-        - If > 1 → Multiple
-        - If is_venture = 1 → Entrepreneur
-        - If is_freelancer = 1 → Freelancer
-        - If is_wage = 1 → Wage Employed
-        - If all 0 → Unemployed
+        Priority Logic:
+        1. Check current_job_count (from employment_details)
+           - If >= 2 current jobs → Multiple
+           - If 1 current job → Wage Employed
+        2. Fall back to flags only if no current jobs
+           - Count how many flags are 1
+           - If > 1 → Multiple
+           - If is_venture = 1 → Entrepreneur
+           - If is_freelancer = 1 → Freelancer
+           - If is_wage = 1 → Wage Employed
+           - If all 0 → Unemployed
 
         Args:
             is_venture: Is running a venture flag
             is_freelancer: Is a freelancer flag
             is_wage: Is wage employed flag
+            current_job_count: Number of current jobs from employment_details
 
         Returns:
             ProfessionalStatus enum
         """
-        # Convert to boolean and count
+        # PRIORITY 1: Check current job count from employment_details
+        if current_job_count >= 2:
+            return ProfessionalStatus.MULTIPLE
+        elif current_job_count == 1:
+            return ProfessionalStatus.WAGE_EMPLOYED
+        # If no current jobs, continue to flag checking
+        # (person may have past employment but now be unemployed/freelancer/entrepreneur)
+
+        # PRIORITY 2: Fall back to flags (for learners without employment_details or no current jobs)
         is_venture_bool = bool(is_venture) if is_venture else False
         is_freelancer_bool = bool(is_freelancer) if is_freelancer else False
         is_wage_bool = bool(is_wage) if is_wage else False
 
         active_count = sum([is_venture_bool, is_freelancer_bool, is_wage_bool])
 
-        # Apply logic
+        # Apply flag-based logic
         if active_count > 1:
             return ProfessionalStatus.MULTIPLE
         elif is_venture_bool:

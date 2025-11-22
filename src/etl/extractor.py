@@ -10,7 +10,7 @@ from pathlib import Path
 import polars as pl
 from structlog.types import FilteringBoundLogger
 
-from transformers.csv_reader_fixed import CSVReaderFixed as CSVReader
+from transformers.streaming_csv_reader import StreamingCSVReader
 from utils.logger import get_logger
 
 
@@ -34,7 +34,12 @@ class Extractor:
         self.csv_path = Path(csv_path)
         self.chunk_size = chunk_size
         self.logger = logger or get_logger(__name__)
-        self.reader = CSVReader(csv_path, chunk_size, logger)
+        self.reader = StreamingCSVReader(
+            csv_path,
+            chunk_size,
+            use_streaming=True,  # Try Polars first, fallback to csv.reader
+            logger=logger,
+        )
 
     def get_total_rows(self) -> int:
         """Get total number of rows."""

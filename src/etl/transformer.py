@@ -46,6 +46,9 @@ class GraphEntities:
         self.learning_details_entries: list[Any] = []
         self.employment_details_entries: list[Any] = []
 
+        # Cache current job count for performance
+        self.current_job_count: int = 0
+
 
 class Transformer:
     """Transform CSV data to graph entities."""
@@ -82,10 +85,14 @@ class Transformer:
             # Process geographic data (HYBRID approach)
             self._process_geography(learner_dict, raw_fields, entities)
 
-            # Derive states
+            # Process employment FIRST (parse employment_details to get current job info)
+            # This must happen before _derive_states() so we can use accurate employment data
+            self._process_employment(raw_fields, entities)
+
+            # Derive states (now has access to employment_details_entries)
             self._derive_states(learner_dict, raw_fields, entities)
 
-            # Create learner node
+            # Create learner node (hashedEmail is primary key, sandId can be null)
             entities.learner = LearnerNode(**learner_dict)
 
             # Process skills
@@ -93,9 +100,6 @@ class Transformer:
 
             # Process learning details (programs & enrollments)
             self._process_learning_details(raw_fields, entities)
-
-            # Process employment (companies & work relationships)
-            self._process_employment(raw_fields, entities)
 
         except Exception as e:
             self.logger.error(
@@ -168,11 +172,12 @@ class Transformer:
         learning_state_node = self.state_deriver.create_learning_state_node(learning_state)
         entities.learning_states.append(learning_state_node)
 
-        # Derive professional status
+        # Derive professional status (with current job count for accurate status)
         prof_status = self.state_deriver.derive_professional_status(
             raw_fields.get("is_running_a_venture"),
             raw_fields.get("is_a_freelancer"),
             raw_fields.get("is_wage_employed"),
+            current_job_count=entities.current_job_count,
         )
         learner_dict["current_professional_status"] = prof_status
 
@@ -226,6 +231,10 @@ class Transformer:
             entries = self.json_parser.parse_employment_details(employment_str)
 
             for entry in entries:
+                # Count current jobs for performance optimization
+                if entry.is_current == "1":
+                    entities.current_job_count += 1
+
                 # Create Company node
                 company_id = generate_id(entry.organization_name)
                 company = CompanyNode(

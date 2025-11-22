@@ -9,6 +9,7 @@ from typing import Any
 
 from structlog.types import FilteringBoundLogger
 
+from etl.batch_accumulator import BatchAccumulator
 from etl.checkpoint import Checkpoint
 from etl.extractor import Extractor
 from etl.loader import Loader
@@ -61,6 +62,7 @@ class ETLPipeline:
         self.loader = Loader(connection, logger)
         self.validator = DataQualityChecker(logger=logger)
         self.checkpoint = Checkpoint(logger=logger)
+        self.accumulator = BatchAccumulator(batch_size=batch_size)
 
         # Metrics tracking
         self.nodes_created: dict[str, int] = {
@@ -157,9 +159,18 @@ class ETLPipeline:
                 self._process_row(row)
                 self.rows_processed += 1
 
+                # Flush batch when full
+                if self.accumulator.is_full():
+                    self._flush_batch()
+
                 # Save checkpoint periodically
                 if self.rows_processed % self.checkpoint_interval == 0:
+                    self._flush_batch()  # Flush before checkpoint
                     self._save_checkpoint()
+
+            # Flush any remaining entities in this chunk
+            if not self.accumulator.is_empty():
+                self._flush_batch()
 
     def _process_row(self, row: dict[str, Any]) -> None:
         """
@@ -172,11 +183,23 @@ class ETLPipeline:
             # Transform row to graph entities
             entities = self.transformer.transform_row(row)
 
-            # Load entities to Neo4j
-            self.loader.load_entities(entities)
+            # Add entities to batch accumulator
+            if entities.learner:
+                self.accumulator.add(
+                    learner=entities.learner,
+                    countries=entities.countries,
+                    cities=entities.cities,
+                    skills=entities.skills,
+                    programs=entities.programs,
+                    companies=entities.companies,
+                    learning_states=entities.learning_states,
+                    professional_statuses=entities.professional_statuses,
+                    learning_entries=entities.learning_details_entries,
+                    employment_entries=entities.employment_details_entries,
+                )
 
-            # Update metrics
-            self._update_metrics(entities)
+                # Update metrics (approximate - de-duplication happens at flush)
+                self._update_metrics(entities)
 
             # Update progress
             if self.progress:
@@ -203,6 +226,27 @@ class ETLPipeline:
         self.nodes_created["companies"] += len(entities.companies)
         self.nodes_created["learning_states"] += len(entities.learning_states)
         self.nodes_created["professional_statuses"] += len(entities.professional_statuses)
+
+    def _flush_batch(self) -> None:
+        """Flush accumulated batch to Neo4j."""
+        if self.accumulator.is_empty():
+            return
+
+        try:
+            batch_data = self.accumulator.get_batch()
+            batch_stats = self.accumulator.get_stats()
+
+            self.logger.info("Flushing batch to Neo4j", **batch_stats)
+
+            # Load batch to Neo4j
+            self.loader.load_batch(batch_data)
+
+            # Clear accumulator for next batch
+            self.accumulator.clear()
+
+        except Exception as e:
+            self.logger.error("Failed to flush batch", error=str(e))
+            raise
 
     def _save_checkpoint(self) -> None:
         """Save current progress to checkpoint."""

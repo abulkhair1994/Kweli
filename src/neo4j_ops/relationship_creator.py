@@ -35,7 +35,7 @@ class RelationshipCreator:
 
     def create_has_skill(
         self,
-        learner_sand_id: str,
+        learner_hashed_email: str,
         skill_id: str,
         relationship: HasSkillRelationship,
     ) -> None:
@@ -43,12 +43,12 @@ class RelationshipCreator:
         Create HAS_SKILL relationship.
 
         Args:
-            learner_sand_id: Learner sandId
+            learner_hashed_email: Learner hashedEmail
             skill_id: Skill id
             relationship: HasSkillRelationship instance
         """
         query = """
-        MATCH (l:Learner {sandId: $learner_sand_id})
+        MATCH (l:Learner {hashedEmail: $learner_hashed_email})
         MATCH (s:Skill {id: $skill_id})
         MERGE (l)-[r:HAS_SKILL]->(s)
         SET r.proficiencyLevel = $proficiency_level,
@@ -59,7 +59,7 @@ class RelationshipCreator:
         """
 
         params = {
-            "learner_sand_id": learner_sand_id,
+            "learner_hashed_email": learner_hashed_email,
             "skill_id": skill_id,
             "proficiency_level": relationship.proficiency_level,
             "source": relationship.source,
@@ -73,7 +73,7 @@ class RelationshipCreator:
 
     def create_enrolled_in(
         self,
-        learner_sand_id: str,
+        learner_hashed_email: str,
         program_id: str,
         relationship: EnrolledInRelationship,
     ) -> None:
@@ -81,12 +81,12 @@ class RelationshipCreator:
         Create ENROLLED_IN relationship.
 
         Args:
-            learner_sand_id: Learner sandId
+            learner_hashed_email: Learner hashedEmail
             program_id: Program id
             relationship: EnrolledInRelationship instance
         """
         query = """
-        MATCH (l:Learner {sandId: $learner_sand_id})
+        MATCH (l:Learner {hashedEmail: $learner_hashed_email})
         MATCH (p:Program {id: $program_id})
         MERGE (l)-[r:ENROLLED_IN]->(p)
         SET r.index = $index,
@@ -116,7 +116,7 @@ class RelationshipCreator:
         """
 
         params = {
-            "learner_sand_id": learner_sand_id,
+            "learner_hashed_email": learner_hashed_email,
             "program_id": program_id,
             "index": relationship.index,
             "cohort_code": relationship.cohort_code,
@@ -149,7 +149,7 @@ class RelationshipCreator:
 
     def create_works_for(
         self,
-        learner_sand_id: str,
+        learner_hashed_email: str,
         company_id: str,
         relationship: WorksForRelationship,
     ) -> None:
@@ -157,12 +157,12 @@ class RelationshipCreator:
         Create WORKS_FOR relationship.
 
         Args:
-            learner_sand_id: Learner sandId
+            learner_hashed_email: Learner hashedEmail
             company_id: Company id
             relationship: WorksForRelationship instance
         """
         query = """
-        MATCH (l:Learner {sandId: $learner_sand_id})
+        MATCH (l:Learner {hashedEmail: $learner_hashed_email})
         MATCH (c:Company {id: $company_id})
         MERGE (l)-[r:WORKS_FOR]->(c)
         SET r.position = $position,
@@ -179,7 +179,7 @@ class RelationshipCreator:
         """
 
         params = {
-            "learner_sand_id": learner_sand_id,
+            "learner_hashed_email": learner_hashed_email,
             "company_id": company_id,
             "position": relationship.position,
             "department": relationship.department,
@@ -190,56 +190,6 @@ class RelationshipCreator:
             "salary_range": relationship.salary_range,
             "source": relationship.source,
             "duration": relationship.duration,
-        }
-
-        self.connection.execute_write(query, params)
-
-    def link_learner_to_learning_state(
-        self,
-        learner_sand_id: str,
-        learning_state_id: str,
-    ) -> None:
-        """
-        Link Learner to LearningState (temporal).
-
-        Args:
-            learner_sand_id: Learner sandId
-            learning_state_id: LearningState internal id
-        """
-        query = """
-        MATCH (l:Learner {sandId: $learner_sand_id})
-        MATCH (ls:LearningState) WHERE id(ls) = $learning_state_id
-        CREATE (l)-[:IN_LEARNING_STATE {transitionDate: datetime()}]->(ls)
-        """
-
-        params = {
-            "learner_sand_id": learner_sand_id,
-            "learning_state_id": learning_state_id,
-        }
-
-        self.connection.execute_write(query, params)
-
-    def link_learner_to_professional_status(
-        self,
-        learner_sand_id: str,
-        professional_status_id: str,
-    ) -> None:
-        """
-        Link Learner to ProfessionalStatus (temporal).
-
-        Args:
-            learner_sand_id: Learner sandId
-            professional_status_id: ProfessionalStatus internal id
-        """
-        query = """
-        MATCH (l:Learner {sandId: $learner_sand_id})
-        MATCH (ps:ProfessionalStatus) WHERE id(ps) = $professional_status_id
-        CREATE (l)-[:HAS_PROFESSIONAL_STATUS {transitionDate: datetime()}]->(ps)
-        """
-
-        params = {
-            "learner_sand_id": learner_sand_id,
-            "professional_status_id": professional_status_id,
         }
 
         self.connection.execute_write(query, params)

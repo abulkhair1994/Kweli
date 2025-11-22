@@ -4,7 +4,7 @@ Date converter for parsing and validating dates.
 Handles edge cases like -99, 1970-01-01, 9999-12-31.
 """
 
-from datetime import date, datetime
+from datetime import date
 
 from structlog.types import FilteringBoundLogger
 
@@ -75,25 +75,6 @@ class DateConverter:
             return None
 
         return parsed
-
-    def convert_datetime(self, datetime_str: str | None) -> datetime | None:
-        """
-        Convert datetime string to datetime object.
-
-        Args:
-            datetime_str: Datetime string to parse
-
-        Returns:
-            Parsed datetime or None
-        """
-        if not datetime_str:
-            return None
-
-        try:
-            return datetime.fromisoformat(datetime_str)
-        except (ValueError, TypeError) as e:
-            self.logger.warning("Failed to parse datetime", value=datetime_str, error=str(e))
-            return None
 
 
 __all__ = ["DateConverter"]

@@ -3,6 +3,7 @@
 from datetime import date
 
 from models.enums import LearningState, ProfessionalStatus
+from models.parsers import EmploymentDetailsEntry
 from transformers.date_converter import DateConverter
 from transformers.geo_normalizer import GeoNormalizer
 from transformers.json_parser import JSONParser
@@ -276,6 +277,100 @@ class TestStateDeriver:
             is_venture=0, is_freelancer=0, is_wage=0
         )
         assert status == ProfessionalStatus.UNEMPLOYED
+
+    def test_derive_professional_status_from_employment_single_job(self) -> None:
+        """Test deriving status from employment_details with single current job."""
+        deriver = StateDeriver()
+        employment_entries = [
+            EmploymentDetailsEntry(
+                index="1",
+                organization_name="Test Company",
+                start_date="2022-01-01",
+                end_date="9999-12-31",
+                country="US",
+                job_title="Software Engineer",
+                is_current="1",
+                duration_in_years="2",
+            )
+        ]
+        # Flags say unemployed, but employment_details shows current job
+        status = deriver.derive_professional_status(
+            is_venture=0,
+            is_freelancer=0,
+            is_wage=0,
+            employment_entries=employment_entries,
+        )
+        # Should trust employment_details over flags
+        assert status == ProfessionalStatus.WAGE_EMPLOYED
+
+    def test_derive_professional_status_from_employment_multiple_jobs(self) -> None:
+        """Test deriving status from employment_details with multiple current jobs."""
+        deriver = StateDeriver()
+        employment_entries = [
+            EmploymentDetailsEntry(
+                index="1",
+                organization_name="Company A",
+                start_date="2022-01-01",
+                end_date="9999-12-31",
+                country="US",
+                job_title="Data Scientist",
+                is_current="1",
+                duration_in_years="2",
+            ),
+            EmploymentDetailsEntry(
+                index="2",
+                organization_name="Company B",
+                start_date="2022-01-01",
+                end_date="9999-12-31",
+                country="US",
+                job_title="Consultant",
+                is_current="1",
+                duration_in_years="2",
+            ),
+        ]
+        status = deriver.derive_professional_status(
+            is_venture=0,
+            is_freelancer=0,
+            is_wage=0,
+            employment_entries=employment_entries,
+        )
+        assert status == ProfessionalStatus.MULTIPLE
+
+    def test_derive_professional_status_no_current_jobs_fallback_to_flags(self) -> None:
+        """Test that when employment_details has no current jobs, fallback to flags."""
+        deriver = StateDeriver()
+        employment_entries = [
+            EmploymentDetailsEntry(
+                index="1",
+                organization_name="Past Company",
+                start_date="2020-01-01",
+                end_date="2021-12-31",
+                country="US",
+                job_title="Engineer",
+                is_current="0",
+                duration_in_years="2",
+            )
+        ]
+        # Has past employment but no current jobs, flags say entrepreneur
+        status = deriver.derive_professional_status(
+            is_venture=1,
+            is_freelancer=0,
+            is_wage=0,
+            employment_entries=employment_entries,
+        )
+        # Should fall back to flags
+        assert status == ProfessionalStatus.ENTREPRENEUR
+
+    def test_derive_professional_status_empty_employment_list(self) -> None:
+        """Test that empty employment list falls back to flags."""
+        deriver = StateDeriver()
+        status = deriver.derive_professional_status(
+            is_venture=0,
+            is_freelancer=1,
+            is_wage=0,
+            employment_entries=[],
+        )
+        assert status == ProfessionalStatus.FREELANCER
 
     def test_create_learning_state_node(self) -> None:
         """Test creating LearningStateNode."""

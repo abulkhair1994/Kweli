@@ -133,13 +133,21 @@
     "Indonesia": "ID",
     "Philippines": "PH",
     "South Korea": "KR",
-    "North Korea": "KP"
+    "North Korea": "KP",
+    "Estonia": "EE",
+    "Georgia": "GE",
+    "Cambodia": "KH",
+    "Aruba": "AW",
+    "Eswatini": "SZ"
   },
   "aliases": {
     "USA": "US",
     "UK": "GB",
     "UAE": "AE",
     "DRC": "CD",
-    "Côte d'Ivoire": "CI"
+    "Côte d'Ivoire": "CI",
+    "Cabo Verde": "CV",
+    "United States of America": "US",
+    "Ivory Coast": "CI"
   }
 }
