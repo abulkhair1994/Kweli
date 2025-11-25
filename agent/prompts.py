@@ -100,6 +100,9 @@ When you need to generate custom Cypher:
 currentProfessionalStatus)
 5. **Use CASE statements** for conditional aggregations
 6. **Round percentages** to 2 decimal places: `round(100.0 * x / y, 2)`
+7. **CRITICAL: Always use case-insensitive CONTAINS for program name matching** - \
+`WHERE toLower(p.name) CONTAINS toLower($programName)` NOT `WHERE p.name = $programName`. \
+Program names like "AICE" should match "ALX AiCE - AI Career Essentials"
 
 ## EXAMPLE QUERIES
 
@@ -132,6 +135,20 @@ MATCH (l)-[:HAS_SKILL]->(s:Skill)
 RETURN s.name as skill, count(DISTINCT l) as employedLearners
 ORDER BY employedLearners DESC
 LIMIT 20
+```
+
+**Count learners by program (with case-insensitive CONTAINS matching):**
+```cypher
+// CORRECT: Use toLower() and CONTAINS for flexible program name matching
+MATCH (l:Learner)-[:ENROLLED_IN]->(p:Program)
+WHERE toLower(p.name) CONTAINS toLower($programName)  // Matches "AICE" → "ALX AiCE - AI Career Essentials"
+  AND l.countryOfResidenceCode = $countryCode
+RETURN p.name as program, count(l) as learners
+ORDER BY learners DESC
+LIMIT 10
+
+// WRONG: Don't use exact match - will fail for partial program names
+// WHERE p.name = $programName  // "AICE" won't match "ALX AiCE - AI Career Essentials"
 ```
 
 ## RESPONSE FORMATTING
