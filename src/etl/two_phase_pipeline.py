@@ -59,7 +59,15 @@ class TwoPhaseETLPipeline:
         self.transformer = Transformer(logger)
         self.validator = DataQualityChecker(logger=logger)
         self.checkpoint = Checkpoint(logger=logger)
-        self.loader = Loader(connection, logger)
+        self.loader = Loader(connection, batch_size=batch_size, logger=logger)
+
+        # Log configuration for debugging
+        self.logger.info(
+            "TwoPhaseETLPipeline initialized",
+            chunk_size=chunk_size,
+            batch_size=batch_size,
+            num_workers=num_workers,
+        )
 
         # Phase 1: Shared entity collections (de-duplicated)
         self.shared_entities = {
@@ -263,6 +271,12 @@ class TwoPhaseETLPipeline:
 
     def _phase2_process_learners_parallel(self, total_rows: int) -> None:
         """Phase 2: Process learners in parallel (shared entities already exist)."""
+        self.logger.info(
+            "Starting Phase 2: Parallel learner processing",
+            num_workers=self.num_workers,
+            batch_size=self.batch_size,
+        )
+
         progress = ProgressTracker(
             total_rows=total_rows,
             enable_progress_bar=self.enable_progress_bar,
@@ -275,6 +289,7 @@ class TwoPhaseETLPipeline:
         batch_lock = Lock()
 
         with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+            self.logger.info("ThreadPoolExecutor started", max_workers=self.num_workers)
             futures = []
 
             for chunk_df in self.extractor.extract_chunks():
@@ -342,11 +357,11 @@ class TwoPhaseETLPipeline:
                 professional_statuses.extend(entities.professional_statuses)
 
                 # Collect relationship data
-                sand_id = entities.learner.sand_id
-                if sand_id:
-                    learning_entries.extend([(sand_id, e) for e in entities.learning_details_entries])
-                    employment_entries.extend([(sand_id, e) for e in entities.employment_details_entries])
-                    skill_associations.extend([(sand_id, s.id) for s in entities.skills])
+                hashed_email = entities.learner.hashed_email
+                if hashed_email:
+                    learning_entries.extend([(hashed_email, e) for e in entities.learning_details_entries])
+                    employment_entries.extend([(hashed_email, e) for e in entities.employment_details_entries])
+                    skill_associations.extend([(hashed_email, s.id) for s in entities.skills])
 
         # Create learners
         if learners:
@@ -381,11 +396,11 @@ class TwoPhaseETLPipeline:
         # Create relationships
         if skill_associations:
             skill_rels = [
-                {"from_id": sand_id, "to_id": skill_id, "properties": {}}
-                for sand_id, skill_id in skill_associations
+                {"from_id": hashed_email, "to_id": skill_id, "properties": {}}
+                for hashed_email, skill_id in skill_associations
             ]
             self.loader.batch_ops.batch_create_relationships(
-                "HAS_SKILL", "Learner", "sandId", "Skill", "id", skill_rels
+                "HAS_SKILL", "Learner", "hashedEmail", "Skill", "id", skill_rels
             )
 
         if learning_entries:

@@ -46,8 +46,10 @@ class GraphEntities:
         self.learning_details_entries: list[Any] = []
         self.employment_details_entries: list[Any] = []
 
-        # Cache current job count for performance
+        # Cache current job count and placement info for performance
         self.current_job_count: int = 0
+        self.has_placement: bool = False
+        self.placement_is_venture: bool = False
 
 
 class Transformer:
@@ -64,6 +66,41 @@ class Transformer:
         self.state_deriver = StateDeriver(logger=logger)
         self.date_converter = DateConverter(logger=logger)
         self.json_parser = JSONParser(logger)
+
+    def _is_current_by_date(self, end_date: str | None) -> bool:
+        """
+        Determine if employment is current based on end_date.
+
+        Logic:
+        - No end_date (None, '', 'null') → Current
+        - end_date = '9999-12-31' (sentinel) → Current
+        - end_date >= snapshot_date → Current
+        - end_date < snapshot_date → Past
+
+        Args:
+            end_date: End date string from CSV
+
+        Returns:
+            True if employment is current
+        """
+        from datetime import datetime
+
+        # No end date means ongoing
+        if not end_date or end_date.strip() in ["", "null", "None"]:
+            return True
+
+        # Sentinel value for ongoing
+        if end_date == "9999-12-31":
+            return True
+
+        # Compare with snapshot date
+        try:
+            end = datetime.strptime(end_date, "%Y-%m-%d").date()
+            # Use state_deriver's snapshot_date
+            return end >= self.state_deriver.snapshot_date
+        except (ValueError, AttributeError):
+            # If can't parse, assume current (preserve data)
+            return True
 
     def transform_row(self, row: dict[str, Any]) -> GraphEntities:
         """
@@ -89,7 +126,10 @@ class Transformer:
             # This must happen before _derive_states() so we can use accurate employment data
             self._process_employment(raw_fields, entities)
 
-            # Derive states (now has access to employment_details_entries)
+            # Process placement details (to determine employment type)
+            self._process_placement(raw_fields, entities)
+
+            # Derive states (now has access to employment and placement data)
             self._derive_states(learner_dict, raw_fields, entities)
 
             # Create learner node (hashedEmail is primary key, sandId can be null)
@@ -172,12 +212,14 @@ class Transformer:
         learning_state_node = self.state_deriver.create_learning_state_node(learning_state)
         entities.learning_states.append(learning_state_node)
 
-        # Derive professional status (with current job count for accurate status)
+        # Derive professional status (with current job count and placement info)
         prof_status = self.state_deriver.derive_professional_status(
             raw_fields.get("is_running_a_venture"),
             raw_fields.get("is_a_freelancer"),
             raw_fields.get("is_wage_employed"),
             current_job_count=entities.current_job_count,
+            has_placement=entities.has_placement,
+            placement_is_venture=entities.placement_is_venture,
         )
         learner_dict["current_professional_status"] = prof_status
 
@@ -231,8 +273,11 @@ class Transformer:
             entries = self.json_parser.parse_employment_details(employment_str)
 
             for entry in entries:
+                # Determine current status based on end_date (temporal logic)
+                is_current_employment = self._is_current_by_date(entry.end_date)
+
                 # Count current jobs for performance optimization
-                if entry.is_current == "1":
+                if is_current_employment:
                     entities.current_job_count += 1
 
                 # Create Company node
@@ -249,6 +294,25 @@ class Transformer:
 
                 # Store entry for relationship creation
                 entities.employment_details_entries.append(entry)
+
+    def _process_placement(
+        self,
+        raw_fields: dict[str, Any],
+        entities: GraphEntities,
+    ) -> None:
+        """Process placement_details JSON to determine placement type."""
+        placement_str = raw_fields.get("placement_details")
+        if placement_str:
+            # Parse placement_details (can be wage employment or venture)
+            placement = self.json_parser.parse_placement_details(placement_str, is_venture=False)
+            if not placement:
+                # Try parsing as venture
+                placement = self.json_parser.parse_placement_details(placement_str, is_venture=True)
+
+            if placement:
+                entities.has_placement = True
+                # Check if it's a venture (has business_name) or wage employment
+                entities.placement_is_venture = hasattr(placement, "business_name")
 
 
 __all__ = ["Transformer", "GraphEntities"]

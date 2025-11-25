@@ -82,57 +82,66 @@ class StateDeriver:
         is_freelancer: int | bool | None,
         is_wage: int | bool | None,
         current_job_count: int = 0,
+        has_placement: bool = False,
+        placement_is_venture: bool = False,
     ) -> ProfessionalStatus:
         """
-        Derive professional status from current job count (preferred) or flags (fallback).
+        Derive professional status from employment_details (source of truth) and placement_details (type classification).
 
         Priority Logic:
-        1. Check current_job_count (from employment_details)
+        1. Check current_job_count from employment_details (actual current employment)
            - If >= 2 current jobs → Multiple
-           - If 1 current job → Wage Employed
-        2. Fall back to flags only if no current jobs
-           - Count how many flags are 1
-           - If > 1 → Multiple
+           - If 1 current job:
+             - Use placement_details to determine type if available
+             - If placement is venture → Entrepreneur
+             - Otherwise → Wage Employed (default)
+        2. Fall back to placement flags for recently placed learners (no employment_details yet)
            - If is_venture = 1 → Entrepreneur
-           - If is_freelancer = 1 → Freelancer
            - If is_wage = 1 → Wage Employed
-           - If all 0 → Unemployed
+        3. No current employment → Unemployed
+
+        Note: This uses employment_details as the source of truth (18.5% coverage)
+              rather than unreliable flags (4.1% coverage). The flags only track
+              official program placements and are not updated when learners self-report
+              employment changes.
 
         Args:
-            is_venture: Is running a venture flag
-            is_freelancer: Is a freelancer flag
-            is_wage: Is wage employed flag
+            is_venture: Is running a venture flag (program placement only)
+            is_freelancer: Is a freelancer flag (UNUSED in dataset)
+            is_wage: Is wage employed flag (program placement only)
             current_job_count: Number of current jobs from employment_details
+            has_placement: Whether learner has placement_details
+            placement_is_venture: Whether placement is a venture (vs wage employment)
 
         Returns:
             ProfessionalStatus enum
         """
-        # PRIORITY 1: Check current job count from employment_details
+        # PRIORITY 1: Check actual current employment from employment_details
+        # This is the source of truth - captures all employment (self-reported + placements)
         if current_job_count >= 2:
             return ProfessionalStatus.MULTIPLE
-        elif current_job_count == 1:
-            return ProfessionalStatus.WAGE_EMPLOYED
-        # If no current jobs, continue to flag checking
-        # (person may have past employment but now be unemployed/freelancer/entrepreneur)
 
-        # PRIORITY 2: Fall back to flags (for learners without employment_details or no current jobs)
+        elif current_job_count == 1:
+            # Has one current job - determine type from placement if available
+            if has_placement and placement_is_venture:
+                return ProfessionalStatus.ENTREPRENEUR
+            else:
+                # Default to wage employed for current jobs
+                # (Most jobs are wage employment, ventures are rare)
+                return ProfessionalStatus.WAGE_EMPLOYED
+
+        # PRIORITY 2: No current jobs - check placement flags for recently placed learners
+        # (These learners may have been placed but haven't updated employment_details yet)
         is_venture_bool = bool(is_venture) if is_venture else False
-        is_freelancer_bool = bool(is_freelancer) if is_freelancer else False
         is_wage_bool = bool(is_wage) if is_wage else False
 
-        active_count = sum([is_venture_bool, is_freelancer_bool, is_wage_bool])
-
-        # Apply flag-based logic
-        if active_count > 1:
-            return ProfessionalStatus.MULTIPLE
-        elif is_venture_bool:
+        if is_venture_bool:
             return ProfessionalStatus.ENTREPRENEUR
-        elif is_freelancer_bool:
-            return ProfessionalStatus.FREELANCER
         elif is_wage_bool:
             return ProfessionalStatus.WAGE_EMPLOYED
-        else:
-            return ProfessionalStatus.UNEMPLOYED
+
+        # PRIORITY 3: No current employment and no recent placement
+        return ProfessionalStatus.UNEMPLOYED
 
     def create_learning_state_node(
         self,

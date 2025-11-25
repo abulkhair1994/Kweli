@@ -21,6 +21,12 @@ dependencies = [
     "click>=8.1.7",
     "pyyaml>=6.0.1",
     "pandas>=2.3.3",
+    # LangGraph + MCP dependencies
+    "langgraph>=0.2.50",
+    "langchain-core>=0.3.30",
+    "langchain-anthropic>=0.3.10",
+    "langchain-openai>=0.2.10",
+    "httpx>=0.28.0",
 ]
 
 [project.optional-dependencies]
@@ -43,12 +49,13 @@ dev = [
 
 [project.scripts]
 impact-etl = "cli.commands:cli"
+impact-agent = "agent.cli:cli"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "agent"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -109,6 +116,11 @@ strict_concatenate = true
 module = [
     "polars.*",
     "neo4j.*",
+    "langgraph.*",
+    "langchain.*",
+    "langchain_core.*",
+    "langchain_anthropic.*",
+    "langchain_openai.*",
 ]
 ignore_missing_imports = true
 

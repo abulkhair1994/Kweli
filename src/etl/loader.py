@@ -25,6 +25,7 @@ class Loader:
     def __init__(
         self,
         connection: Neo4jConnection,
+        batch_size: int = 1000,
         logger: FilteringBoundLogger | None = None,
     ) -> None:
         """
@@ -32,13 +33,14 @@ class Loader:
 
         Args:
             connection: Neo4j connection
+            batch_size: Batch size for operations (default: 1000)
             logger: Optional logger instance
         """
         self.connection = connection
         self.logger = logger or get_logger(__name__)
         self.node_creator = NodeCreator(connection, logger)
         self.relationship_creator = RelationshipCreator(connection, logger)
-        self.batch_ops = BatchOperations(connection, batch_size=1000, logger=logger)
+        self.batch_ops = BatchOperations(connection, batch_size=batch_size, logger=logger)
 
     # ====================
     # Helper Methods
@@ -542,14 +544,14 @@ class Loader:
         records = []
         for learner in batch.learners:
             current_state = getattr(learner, state_attr, None)
-            if not learner.sand_id or not current_state:
+            if not learner.hashed_email or not current_state:
                 continue
             for state in states_list:
                 state_value = state.state if hasattr(state, 'state') else state.status
                 if state_value == current_state:
                     state_key = "state" if hasattr(state, 'state') else "status"
                     records.append({
-                        "learner_id": learner.sand_id,
+                        "learner_id": learner.hashed_email,
                         state_key: state_value,
                         "start_date": state.start_date,
                         "end_date": state.end_date,
@@ -561,7 +563,7 @@ class Loader:
             node_label = "LearningState" if rel_type == "HAS_LEARNING_STATE" else "ProfessionalStatus"
             self.batch_ops.batch_execute(f"""
                 UNWIND $records AS record
-                MATCH (l:Learner {{sandId: record.learner_id}})
+                MATCH (l:Learner {{hashedEmail: record.learner_id}})
                 MATCH (n:{node_label} {{{state_key}: record.{state_key}, startDate: record.start_date}})
                 MERGE (l)-[r:{rel_type}]->(n)
                 SET r.validFrom = record.start_date, r.validTo = record.end_date,
@@ -590,7 +592,7 @@ class Loader:
         Create ENROLLED_IN relationships from a list (for two-phase pipeline).
 
         Args:
-            learning_entries: List of (sand_id, entry) tuples
+            learning_entries: List of (hashed_email, entry) tuples
         """
         if not learning_entries:
             return
@@ -599,12 +601,12 @@ class Loader:
         date_converter = DateConverter(logger=self.logger)
 
         records = []
-        for sand_id, entry in learning_entries:
-            if sand_id is None:
+        for hashed_email, entry in learning_entries:
+            if hashed_email is None:
                 continue
 
             records.append({
-                "from_id": sand_id,
+                "from_id": hashed_email,
                 "to_id": entry.cohort_code,
                 "properties": {
                     "index": int(entry.index), "cohortCode": entry.cohort_code,
@@ -631,7 +633,7 @@ class Loader:
 
         if records:
             self.batch_ops.batch_create_relationships(
-                "ENROLLED_IN", "Learner", "sandId", "Program", "id", records
+                "ENROLLED_IN", "Learner", "hashedEmail", "Program", "id", records
             )
 
     def _batch_create_employment_relationships_from_list(self, employment_entries: list) -> None:
@@ -639,7 +641,7 @@ class Loader:
         Create WORKS_FOR relationships from a list (for two-phase pipeline).
 
         Args:
-            employment_entries: List of (sand_id, entry) tuples
+            employment_entries: List of (hashed_email, entry) tuples
         """
         if not employment_entries:
             return
@@ -650,13 +652,13 @@ class Loader:
         date_converter = DateConverter(logger=self.logger)
 
         records = []
-        for sand_id, entry in employment_entries:
-            if sand_id is None:
+        for hashed_email, entry in employment_entries:
+            if hashed_email is None:
                 continue
 
             company_id = generate_id(entry.organization_name)
             records.append({
-                "from_id": sand_id,
+                "from_id": hashed_email,
                 "to_id": company_id,
                 "properties": {
                     "position": entry.job_title,
@@ -669,7 +671,7 @@ class Loader:
 
         if records:
             self.batch_ops.batch_create_relationships(
-                "WORKS_FOR", "Learner", "sandId", "Company", "id", records
+                "WORKS_FOR", "Learner", "hashedEmail", "Company", "id", records
             )
 
 

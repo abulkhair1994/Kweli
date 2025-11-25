@@ -1,7 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(uv run python:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(docker exec:*)",
+      "Bash(pkill:*)",
+      "Bash(docker ps:*)",
+      "Bash(python3:*)",
+      "Bash(uv run ruff:*)",
+      "Bash(python -m agent.cli:*)",
+      "Bash(export NEO4J_URI=\"bolt://localhost:7688\")",
+      "Bash(python -c:*)",
+      "Bash(AGENT_VERBOSE=true python -m agent.cli:*)"
     ],
     "deny": [],
     "ask": []

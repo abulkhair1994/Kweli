@@ -88,7 +88,7 @@ def run(csv_path: Path, config: Path, resume: bool, progress: bool):
                 connection=connection,
                 chunk_size=etl_cfg.get("chunk_size", 10000),
                 batch_size=etl_cfg.get("batch_size", 1000),
-                num_workers=1,  # Use 1 worker to avoid Neo4j deadlocks in Phase 2
+                num_workers=etl_cfg.get("num_workers", 4),  # Read from config (default: 4)
                 checkpoint_interval=etl_cfg.get("checkpoint_interval", 5000),
                 enable_progress_bar=progress,
                 logger=logger,

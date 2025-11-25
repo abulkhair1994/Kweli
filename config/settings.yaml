@@ -1,17 +1,17 @@
 # Impact Learners ETL Configuration
 
 etl:
-  chunk_size: 10000  # Rows to process per chunk
-  batch_size: 1000   # Records to send to Neo4j per batch
-  num_workers: 4     # Parallel workers for batch flushing (2-8 recommended)
+  chunk_size: 50000  # Rows to process per chunk (5x increase for performance)
+  batch_size: 5000   # Records to send to Neo4j per batch (5x increase for performance)
+  num_workers: 8     # Parallel workers for batch flushing (optimized for multi-core)
 
   # Resume capability
   enable_checkpoints: true
   checkpoint_interval: 5000  # Save checkpoint every N rows
 
   # Progress tracking
-  enable_progress_bar: true
-  log_interval: 1000  # Log progress every N rows
+  enable_progress_bar: false  # Disabled for maximum performance
+  log_interval: 10000  # Log progress every N rows (reduced frequency)
 
 neo4j:
   # Connection details
@@ -25,8 +25,8 @@ neo4j:
   max_transaction_retry_time: 30  # seconds
 
   # Batch operations
-  batch_size: 1000
-  batch_timeout: 60  # seconds
+  batch_size: 5000  # Match ETL batch size for optimal performance
+  batch_timeout: 90  # seconds (increased for larger batches)
 
 validation:
   # Data quality thresholds

@@ -32,6 +32,20 @@ class TestJSONParser:
         result = parser.parse_json_field("invalid json")
         assert result is None
 
+    def test_parse_double_encoded_json(self) -> None:
+        """Test parsing double-encoded JSON (bug fix for 72% of data)."""
+        parser = JSONParser()
+        # Double-encoded JSON: '"[{\\"key\\": \\"value\\"}]"'
+        double_encoded = '"[{\\"name\\": \\"test\\"}]"'
+        result = parser.parse_json_field(double_encoded)
+        assert result == [{"name": "test"}]
+
+    def test_parse_double_encoded_empty_array(self) -> None:
+        """Test parsing double-encoded empty array returns None."""
+        parser = JSONParser()
+        result = parser.parse_json_field('"[]"')
+        assert result is None
+
     def test_parse_learning_details(self) -> None:
         """Test parsing learning_details JSON."""
         parser = JSONParser()
@@ -263,10 +277,12 @@ class TestStateDeriver:
         assert status == ProfessionalStatus.ENTREPRENEUR
 
     def test_derive_professional_status_multiple(self) -> None:
-        """Test deriving multiple status."""
+        """Test deriving multiple status from multiple current jobs."""
         deriver = StateDeriver()
+        # Multiple status comes from having 2+ current jobs (from employment_details)
         status = deriver.derive_professional_status(
-            is_venture=1, is_freelancer=1, is_wage=0
+            is_venture=0, is_freelancer=0, is_wage=0,
+            current_job_count=2  # Has 2 current jobs
         )
         assert status == ProfessionalStatus.MULTIPLE
 
@@ -281,24 +297,12 @@ class TestStateDeriver:
     def test_derive_professional_status_from_employment_single_job(self) -> None:
         """Test deriving status from employment_details with single current job."""
         deriver = StateDeriver()
-        employment_entries = [
-            EmploymentDetailsEntry(
-                index="1",
-                organization_name="Test Company",
-                start_date="2022-01-01",
-                end_date="9999-12-31",
-                country="US",
-                job_title="Software Engineer",
-                is_current="1",
-                duration_in_years="2",
-            )
-        ]
-        # Flags say unemployed, but employment_details shows current job
+        # Flags say unemployed, but has 1 current job (from employment_details)
         status = deriver.derive_professional_status(
             is_venture=0,
             is_freelancer=0,
             is_wage=0,
-            employment_entries=employment_entries,
+            current_job_count=1,  # Has 1 current job
         )
         # Should trust employment_details over flags
         assert status == ProfessionalStatus.WAGE_EMPLOYED
@@ -306,33 +310,12 @@ class TestStateDeriver:
     def test_derive_professional_status_from_employment_multiple_jobs(self) -> None:
         """Test deriving status from employment_details with multiple current jobs."""
         deriver = StateDeriver()
-        employment_entries = [
-            EmploymentDetailsEntry(
-                index="1",
-                organization_name="Company A",
-                start_date="2022-01-01",
-                end_date="9999-12-31",
-                country="US",
-                job_title="Data Scientist",
-                is_current="1",
-                duration_in_years="2",
-            ),
-            EmploymentDetailsEntry(
-                index="2",
-                organization_name="Company B",
-                start_date="2022-01-01",
-                end_date="9999-12-31",
-                country="US",
-                job_title="Consultant",
-                is_current="1",
-                duration_in_years="2",
-            ),
-        ]
+        # Has 2 current jobs (from employment_details)
         status = deriver.derive_professional_status(
             is_venture=0,
             is_freelancer=0,
             is_wage=0,
-            employment_entries=employment_entries,
+            current_job_count=2,  # Has 2 current jobs
         )
         assert status == ProfessionalStatus.MULTIPLE
 
@@ -356,7 +339,7 @@ class TestStateDeriver:
             is_venture=1,
             is_freelancer=0,
             is_wage=0,
-            employment_entries=employment_entries,
+            current_job_count=0,  # No current jobs
         )
         # Should fall back to flags
         assert status == ProfessionalStatus.ENTREPRENEUR
@@ -366,11 +349,13 @@ class TestStateDeriver:
         deriver = StateDeriver()
         status = deriver.derive_professional_status(
             is_venture=0,
-            is_freelancer=1,
-            is_wage=0,
-            employment_entries=[],
+            is_freelancer=0,
+            is_wage=1,
+            current_job_count=0,  # No employment data
         )
-        assert status == ProfessionalStatus.FREELANCER
+        # Note: is_freelancer is UNUSED in the dataset (always 0)
+        # The new logic doesn't check is_freelancer
+        assert status == ProfessionalStatus.WAGE_EMPLOYED
 
     def test_create_learning_state_node(self) -> None:
         """Test creating LearningStateNode."""

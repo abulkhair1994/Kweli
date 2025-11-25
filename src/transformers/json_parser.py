@@ -28,7 +28,7 @@ class JSONParser:
 
     def parse_json_field(self, value: str | None) -> list[dict[str, Any]] | None:
         """
-        Parse JSON field, handling empty arrays and invalid JSON.
+        Parse JSON field, handling empty arrays, invalid JSON, and double-encoded JSON.
 
         Args:
             value: JSON string from CSV
@@ -39,6 +39,8 @@ class JSONParser:
         Examples:
             '[]' -> None (empty array)
             '[{"key": "value"}]' -> [{"key": "value"}]
+            '"[]"' -> None (double-encoded empty array)
+            '"[{\\"key\\": \\"value\\"}]"' -> [{"key": "value"}] (double-encoded)
             'invalid' -> None (with warning)
         """
         if not value or value == "[]":
@@ -46,6 +48,20 @@ class JSONParser:
 
         try:
             parsed = json.loads(value)
+
+            # Handle double-encoded JSON (string containing JSON)
+            if isinstance(parsed, str):
+                # Check if it's an empty array string
+                if parsed == "[]":
+                    return None
+                # Try parsing again
+                try:
+                    parsed = json.loads(parsed)
+                except json.JSONDecodeError:
+                    # If second parse fails, it's not valid JSON
+                    self.logger.warning("Failed to parse double-encoded JSON", value=value[:100])
+                    return None
+
             if not parsed or not isinstance(parsed, list):
                 return None
             return parsed
