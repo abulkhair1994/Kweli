@@ -10,6 +10,7 @@ import click
 import yaml
 
 from etl.checkpoint import Checkpoint
+from etl.pipeline import ETLPipeline
 from etl.two_phase_pipeline import TwoPhaseETLPipeline
 from neo4j_ops.connection import Neo4jConnection
 from neo4j_ops.indexes import setup_indexes
@@ -36,6 +37,12 @@ def cli():
     help="Path to config file",
 )
 @click.option(
+    "--mode",
+    type=click.Choice(["sequential", "parallel"], case_sensitive=False),
+    default="parallel",
+    help="ETL pipeline mode (sequential or parallel)",
+)
+@click.option(
     "--resume/--no-resume",
     default=False,
     help="Resume from last checkpoint",
@@ -45,7 +52,7 @@ def cli():
     default=True,
     help="Show progress bar",
 )
-def run(csv_path: Path, config: Path, resume: bool, progress: bool):
+def run(csv_path: Path, config: Path, mode: str, resume: bool, progress: bool):
     """Run the ETL pipeline."""
     logger = get_logger(__name__)
 
@@ -79,20 +86,32 @@ def run(csv_path: Path, config: Path, resume: bool, progress: bool):
             click.echo("✓ Indexes ready")
 
             # Run pipeline
-            click.echo(f"\nStarting ETL pipeline for {csv_path}")
+            click.echo(f"\nStarting ETL pipeline ({mode} mode) for {csv_path}")
             if resume:
                 click.echo("Resume mode: ON")
 
-            pipeline = TwoPhaseETLPipeline(
-                csv_path=csv_path,
-                connection=connection,
-                chunk_size=etl_cfg.get("chunk_size", 10000),
-                batch_size=etl_cfg.get("batch_size", 1000),
-                num_workers=etl_cfg.get("num_workers", 4),  # Read from config (default: 4)
-                checkpoint_interval=etl_cfg.get("checkpoint_interval", 5000),
-                enable_progress_bar=progress,
-                logger=logger,
-            )
+            if mode == "parallel":
+                pipeline = TwoPhaseETLPipeline(
+                    csv_path=csv_path,
+                    connection=connection,
+                    chunk_size=etl_cfg.get("chunk_size", 10000),
+                    batch_size=etl_cfg.get("batch_size", 1000),
+                    num_workers=etl_cfg.get("num_workers", 4),
+                    checkpoint_interval=etl_cfg.get("checkpoint_interval", 5000),
+                    enable_progress_bar=progress,
+                    logger=logger,
+                )
+            else:  # sequential
+                pipeline = ETLPipeline(
+                    csv_path=csv_path,
+                    connection=connection,
+                    chunk_size=etl_cfg.get("chunk_size", 10000),
+                    batch_size=etl_cfg.get("batch_size", 1000),
+                    checkpoint_interval=etl_cfg.get("checkpoint_interval", 5000),
+                    enable_progress_bar=progress,
+                    resume_from_checkpoint=resume,
+                    logger=logger,
+                )
 
             metrics = pipeline.run()
 

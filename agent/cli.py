@@ -1,6 +1,7 @@
 """CLI interface for Kweli - The Impact Learners Analytics Agent."""
 
 import sys
+import uuid
 
 import click
 from rich.console import Console
@@ -8,6 +9,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 from agent.config import get_config, reset_config
+from agent.context import ContextExtractor
 from agent.graph import AnalyticsAgent
 from agent.tools.neo4j_tools import get_executor
 
@@ -61,7 +63,10 @@ def chat(verbose: bool, show_tools: bool):
             "  • What's the completion rate for Software Engineering?\n"
             "  • Show me the top 10 skills for employed learners\n"
             "  • What's the employment rate by program?\n\n"
-            "Type 'exit' or 'quit' to end the session.",
+            "[dim]Special commands:[/dim]\n"
+            "  • [cyan]reset[/cyan] - Clear conversation context\n"
+            "  • [cyan]context[/cyan] - Show active filters\n"
+            "  • [cyan]exit[/cyan] or [cyan]quit[/cyan] - End session",
             title="✨ Kweli Analytics",
             border_style="cyan",
         )
@@ -75,6 +80,13 @@ def chat(verbose: bool, show_tools: bool):
         console.print(f"[red]Error initializing agent: {e}[/red]")
         sys.exit(1)
 
+    # Generate session thread ID for conversation persistence
+    thread_id = str(uuid.uuid4())
+    console.print(f"[dim]Session ID: {thread_id[:8]}...[/dim]\n")
+
+    # Track active filters for context display
+    active_filters = {}
+
     # Chat loop
     while True:
         try:
@@ -86,6 +98,29 @@ def chat(verbose: bool, show_tools: bool):
                 console.print("\n[cyan]Goodbye! 👋[/cyan]")
                 break
 
+            # Handle reset command - generate new thread ID
+            if user_query.lower() == "reset":
+                thread_id = str(uuid.uuid4())
+                active_filters = {}
+                console.print(f"[green]✓[/green] Context reset. New session: {thread_id[:8]}...\n")
+                continue
+
+            # Handle context command - show active filters
+            if user_query.lower() == "context":
+                if active_filters:
+                    filter_display = "\n".join(f"  • [cyan]{k}[/cyan]: {v}" for k, v in active_filters.items())
+                    console.print(
+                        Panel(
+                            f"[bold]Active Filters:[/bold]\n{filter_display}",
+                            title="📊 Session Context",
+                            border_style="cyan",
+                        )
+                    )
+                else:
+                    console.print("[dim]No active filters in current session[/dim]")
+                console.print()
+                continue
+
             # Skip empty queries
             if not user_query.strip():
                 continue
@@ -95,7 +130,7 @@ def chat(verbose: bool, show_tools: bool):
                 console.print("[dim]🤔 Analyzing query...[/dim]")
 
                 # Stream execution to show tools
-                for state in agent.stream_query(user_query):
+                for state in agent.stream_query(user_query, thread_id=thread_id):
                     if "agent" in state:
                         agent_state = state["agent"]
                         messages = agent_state.get("messages", [])
@@ -105,14 +140,22 @@ def chat(verbose: bool, show_tools: bool):
                                 for tool_call in last_msg.tool_calls:
                                     tool_name = tool_call.get("name", "unknown")
                                     console.print(f"[dim]🔍 Calling tool: [cyan]{tool_name}[/cyan][/dim]")
+
+                        # Extract filters from query params and cypher
+                        cypher = agent_state.get("cypher_query")
+                        params = agent_state.get("query_params", {})
+                        if cypher or params:
+                            extracted = ContextExtractor.extract_all(cypher, params)
+                            if extracted:
+                                active_filters.update(extracted)
                     elif "tools" in state:
                         console.print("[dim]⚙️  Processing results...[/dim]")
 
                 # Get final response
-                response = agent.query(user_query)
+                response = agent.query(user_query, thread_id=thread_id)
             else:
                 with console.status("[cyan]🔍 Analyzing query...[/cyan]", spinner="dots"):
-                    response = agent.query(user_query)
+                    response = agent.query(user_query, thread_id=thread_id)
 
             # Display response
             console.print(
@@ -123,6 +166,12 @@ def chat(verbose: bool, show_tools: bool):
                     padding=(1, 2),
                 )
             )
+
+            # Show active context indicator if filters are present
+            if active_filters:
+                filter_str = ContextExtractor.format_filters(active_filters)
+                console.print(f"[dim]💡 Active context: {filter_str}[/dim]")
+
             console.print()
 
         except KeyboardInterrupt:

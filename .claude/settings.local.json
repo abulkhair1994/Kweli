@@ -12,7 +12,9 @@
       "Bash(python -m agent.cli:*)",
       "Bash(export NEO4J_URI=\"bolt://localhost:7688\")",
       "Bash(python -c:*)",
-      "Bash(AGENT_VERBOSE=true python -m agent.cli:*)"
+      "Bash(AGENT_VERBOSE=true python -m agent.cli:*)",
+      "Bash(find:*)",
+      "Bash(uv run:*)"
     ],
     "deny": [],
     "ask": []

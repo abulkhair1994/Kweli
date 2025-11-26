@@ -79,7 +79,7 @@ class StateDeriver:
     def derive_professional_status(
         self,
         is_venture: int | bool | None,
-        is_freelancer: int | bool | None,
+        is_freelancer: int | bool | None,  # noqa: ARG002
         is_wage: int | bool | None,
         current_job_count: int = 0,
         has_placement: bool = False,

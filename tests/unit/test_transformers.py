@@ -3,7 +3,6 @@
 from datetime import date
 
 from models.enums import LearningState, ProfessionalStatus
-from models.parsers import EmploymentDetailsEntry
 from transformers.date_converter import DateConverter
 from transformers.geo_normalizer import GeoNormalizer
 from transformers.json_parser import JSONParser
@@ -322,18 +321,6 @@ class TestStateDeriver:
     def test_derive_professional_status_no_current_jobs_fallback_to_flags(self) -> None:
         """Test that when employment_details has no current jobs, fallback to flags."""
         deriver = StateDeriver()
-        employment_entries = [
-            EmploymentDetailsEntry(
-                index="1",
-                organization_name="Past Company",
-                start_date="2020-01-01",
-                end_date="2021-12-31",
-                country="US",
-                job_title="Engineer",
-                is_current="0",
-                duration_in_years="2",
-            )
-        ]
         # Has past employment but no current jobs, flags say entrepreneur
         status = deriver.derive_professional_status(
             is_venture=1,

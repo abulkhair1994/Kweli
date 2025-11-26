@@ -45,7 +45,7 @@ class TestBatchData:
         """Test entity count with data."""
         batch = BatchData()
         batch.learners.append(
-            LearnerNode(sand_id="test1", full_name="Test User")
+            LearnerNode(sand_id="test1", hashed_email="hash1", full_name="Test User")
         )
         batch.countries["EG"] = CountryNode(code="EG", name="Egypt")
         batch.cities["EG-CAI"] = CityNode(
@@ -82,7 +82,7 @@ class TestBatchAccumulator:
         """Test adding a single learner."""
         acc = BatchAccumulator(batch_size=10)
 
-        learner = LearnerNode(sand_id="test1", full_name="Test User")
+        learner = LearnerNode(sand_id="test1", hashed_email="hash1", full_name="Test User")
         country = CountryNode(code="EG", name="Egypt")
         city = CityNode(id="EG-CAI", name="Cairo", country_code="EG")
         skill = SkillNode(id="python", name="Python")
@@ -123,8 +123,8 @@ class TestBatchAccumulator:
         """Test that duplicate countries are de-duplicated."""
         acc = BatchAccumulator(batch_size=10)
 
-        learner1 = LearnerNode(sand_id="test1", full_name="User 1")
-        learner2 = LearnerNode(sand_id="test2", full_name="User 2")
+        learner1 = LearnerNode(sand_id="test1", hashed_email="hash1", full_name="User 1")
+        learner2 = LearnerNode(sand_id="test2", hashed_email="hash2", full_name="User 2")
 
         country_eg = CountryNode(code="EG", name="Egypt")
 
@@ -163,8 +163,8 @@ class TestBatchAccumulator:
         """Test that duplicate skills are de-duplicated."""
         acc = BatchAccumulator(batch_size=10)
 
-        learner1 = LearnerNode(sand_id="test1", full_name="User 1")
-        learner2 = LearnerNode(sand_id="test2", full_name="User 2")
+        learner1 = LearnerNode(sand_id="test1", hashed_email="hash1", full_name="User 1")
+        learner2 = LearnerNode(sand_id="test2", hashed_email="hash2", full_name="User 2")
 
         skill_python = SkillNode(id="python", name="Python")
 
@@ -192,8 +192,8 @@ class TestBatchAccumulator:
         """Test that learners are NOT de-duplicated."""
         acc = BatchAccumulator(batch_size=10)
 
-        learner1 = LearnerNode(sand_id="test1", full_name="User 1")
-        learner2 = LearnerNode(sand_id="test1", full_name="User 1")  # Same sand_id
+        learner1 = LearnerNode(sand_id="test1", hashed_email="hash1", full_name="User 1")
+        learner2 = LearnerNode(sand_id="test1", hashed_email="hash1", full_name="User 1")  # Same sand_id
 
         for learner in [learner1, learner2]:
             acc.add(
@@ -217,7 +217,7 @@ class TestBatchAccumulator:
         acc = BatchAccumulator(batch_size=3)
 
         for i in range(3):
-            learner = LearnerNode(sand_id=f"test{i}", full_name=f"User {i}")
+            learner = LearnerNode(sand_id=f"test{i}", hashed_email=f"hash{i}", full_name=f"User {i}")
             acc.add(
                 learner=learner,
                 countries=[],
@@ -237,7 +237,7 @@ class TestBatchAccumulator:
         """Test clearing batch."""
         acc = BatchAccumulator(batch_size=10)
 
-        learner = LearnerNode(sand_id="test1", full_name="User 1")
+        learner = LearnerNode(sand_id="test1", hashed_email="hash1", full_name="User 1")
         acc.add(
             learner=learner,
             countries=[],
@@ -259,7 +259,7 @@ class TestBatchAccumulator:
         """Test statistics reporting."""
         acc = BatchAccumulator(batch_size=10)
 
-        learner = LearnerNode(sand_id="test1", full_name="User 1")
+        learner = LearnerNode(sand_id="test1", hashed_email="hash1", full_name="User 1")
         country = CountryNode(code="EG", name="Egypt")
         skill1 = SkillNode(id="python", name="Python")
         skill2 = SkillNode(id="javascript", name="JavaScript")
@@ -286,7 +286,7 @@ class TestBatchAccumulator:
         """Test storing relationship entries."""
         acc = BatchAccumulator(batch_size=10)
 
-        learner = LearnerNode(sand_id="test1", full_name="User 1")
+        learner = LearnerNode(sand_id="test1", hashed_email="hash1", full_name="User 1")
 
         learning_entry = LearningDetailsEntry(
             index="1",
@@ -338,8 +338,8 @@ class TestBatchAccumulator:
         batch = acc.get_batch()
         assert len(batch.learning_entries) == 1
         assert len(batch.employment_entries) == 1
-        assert batch.learning_entries[0][0] == "test1"  # sand_id
-        assert batch.employment_entries[0][0] == "test1"  # sand_id
+        assert batch.learning_entries[0][0] == "hash1"  # hashed_email
+        assert batch.employment_entries[0][0] == "hash1"  # hashed_email
 
     def test_multiple_batches(self):
         """Test handling multiple batches."""
@@ -347,7 +347,7 @@ class TestBatchAccumulator:
 
         # First batch
         for i in range(2):
-            learner = LearnerNode(sand_id=f"test{i}", full_name=f"User {i}")
+            learner = LearnerNode(sand_id=f"test{i}", hashed_email=f"hash{i}", full_name=f"User {i}")
             acc.add(
                 learner=learner,
                 countries=[],
@@ -370,7 +370,7 @@ class TestBatchAccumulator:
         assert acc.is_empty()
 
         for i in range(2, 4):
-            learner = LearnerNode(sand_id=f"test{i}", full_name=f"User {i}")
+            learner = LearnerNode(sand_id=f"test{i}", hashed_email=f"hash{i}", full_name=f"User {i}")
             acc.add(
                 learner=learner,
                 countries=[],

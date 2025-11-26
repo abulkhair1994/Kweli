@@ -9,15 +9,15 @@ from typing import Any
 from langchain_core.tools import tool
 from neo4j import GraphDatabase, Result
 
+from agent.config import get_config
+from agent.tools.validation import validate_cypher_query, validate_query_parameters
+
 # Suppress Neo4j driver notifications/warnings
 logging.getLogger("neo4j").setLevel(logging.ERROR)
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="neo4j")
 
 # Add src to path to import existing Neo4j utilities
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
-
-from agent.config import get_config
-from agent.tools.validation import validate_cypher_query, validate_query_parameters
 
 
 class Neo4jExecutor:
@@ -296,7 +296,7 @@ def execute_cypher_query(query: str, params: dict[str, Any] | None = None) -> st
 
 
 @tool
-def generate_cypher_query(natural_language_query: str, schema_context: str = "") -> str:
+def generate_cypher_query(natural_language_query: str, _schema_context: str = "") -> str:
     """
     Generate a Cypher query from a natural language description.
 
@@ -305,7 +305,7 @@ def generate_cypher_query(natural_language_query: str, schema_context: str = "")
 
     Args:
         natural_language_query: The query in natural language
-        schema_context: Optional schema context for query generation
+        _schema_context: Optional schema context for query generation (unused)
 
     Returns:
         Instructions for generating the query

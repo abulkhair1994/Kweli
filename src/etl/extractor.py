@@ -10,7 +10,7 @@ from pathlib import Path
 import polars as pl
 from structlog.types import FilteringBoundLogger
 
-from transformers.streaming_csv_reader import StreamingCSVReader
+from transformers.polars_csv_reader import StreamingCSVReader
 from utils.logger import get_logger
 
 

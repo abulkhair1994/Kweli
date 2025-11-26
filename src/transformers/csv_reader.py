@@ -1,7 +1,7 @@
 """
 CSV reader with robust handling of multi-line quoted fields.
 
-IMPROVED SOLUTION using Python's csv module:
+Robust CSV reader using Python's csv module:
 - Python's csv.reader() properly handles quoted fields with embedded newlines
 - RFC 4180 compliant parsing
 - Filters NUL bytes (\x00) that cause parsing errors
