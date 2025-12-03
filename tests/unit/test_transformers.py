@@ -2,15 +2,17 @@
 
 from datetime import date
 
-from models.enums import LearningState, ProfessionalStatus
-from models.parsers import EmploymentDetailsEntry, LearningDetailsEntry
-from transformers.date_converter import DateConverter
-from transformers.geo_normalizer import GeoNormalizer
-from transformers.json_parser import JSONParser
-from transformers.learning_state_history_builder import LearningStateHistoryBuilder
-from transformers.professional_status_history_builder import ProfessionalStatusHistoryBuilder
-from transformers.skills_parser import SkillsParser
-from transformers.state_deriver import StateDeriver
+from kweli.etl.models.enums import LearningState, ProfessionalStatus
+from kweli.etl.models.parsers import EmploymentDetailsEntry, LearningDetailsEntry
+from kweli.etl.transformers.date_converter import DateConverter
+from kweli.etl.transformers.geo_normalizer import GeoNormalizer
+from kweli.etl.transformers.json_parser import JSONParser
+from kweli.etl.transformers.learning_state_history_builder import LearningStateHistoryBuilder
+from kweli.etl.transformers.professional_status_history_builder import (
+    ProfessionalStatusHistoryBuilder,
+)
+from kweli.etl.transformers.skills_parser import SkillsParser
+from kweli.etl.transformers.state_deriver import StateDeriver
 
 
 class TestJSONParser:
@@ -400,7 +402,7 @@ class TestUtils:
 
     def test_normalize_string(self) -> None:
         """Test string normalization."""
-        from utils.helpers import normalize_string
+        from kweli.etl.utils.helpers import normalize_string
 
         assert normalize_string("  Test  ") == "Test"
         assert normalize_string("n/a") is None
@@ -408,7 +410,7 @@ class TestUtils:
 
     def test_normalize_skill_name(self) -> None:
         """Test skill name normalization."""
-        from utils.helpers import normalize_skill_name
+        from kweli.etl.utils.helpers import normalize_skill_name
 
         assert normalize_skill_name("Data Analysis") == "data_analysis"
         assert normalize_skill_name("Python 3.x") == "python_3x"
@@ -416,14 +418,14 @@ class TestUtils:
 
     def test_create_city_id(self) -> None:
         """Test city ID creation."""
-        from utils.helpers import create_city_id
+        from kweli.etl.utils.helpers import create_city_id
 
         assert create_city_id("Cairo", "EG") == "EG-CAI"
         assert create_city_id("Alexandria", "EG") == "EG-ALE"
 
     def test_parse_date(self) -> None:
         """Test date parsing."""
-        from utils.helpers import parse_date
+        from kweli.etl.utils.helpers import parse_date
 
         assert parse_date("2024-01-15") == date(2024, 1, 15)
         assert parse_date("1970-01-01") is None
@@ -431,7 +433,7 @@ class TestUtils:
 
     def test_parse_numeric(self) -> None:
         """Test numeric parsing."""
-        from utils.helpers import parse_numeric
+        from kweli.etl.utils.helpers import parse_numeric
 
         assert parse_numeric("95.5") == 95.5
         assert parse_numeric(-99) is None
@@ -439,7 +441,7 @@ class TestUtils:
 
     def test_parse_boolean(self) -> None:
         """Test boolean parsing."""
-        from utils.helpers import parse_boolean
+        from kweli.etl.utils.helpers import parse_boolean
 
         assert parse_boolean("1") is True
         assert parse_boolean("0") is False
@@ -448,7 +450,7 @@ class TestUtils:
 
     def test_generate_id(self) -> None:
         """Test ID generation."""
-        from utils.helpers import generate_id
+        from kweli.etl.utils.helpers import generate_id
 
         id1 = generate_id("test")
         id2 = generate_id("test")

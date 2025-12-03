@@ -6,9 +6,8 @@ Tests for BatchAccumulator and other ETL utilities.
 
 from datetime import date
 
-from etl.batch_accumulator import BatchAccumulator, BatchData
-from models.enums import LearningState, ProfessionalStatus
-from models.nodes import (
+from kweli.etl.models.enums import LearningState, ProfessionalStatus
+from kweli.etl.models.nodes import (
     CityNode,
     CompanyNode,
     CountryNode,
@@ -18,7 +17,8 @@ from models.nodes import (
     ProgramNode,
     SkillNode,
 )
-from models.parsers import EmploymentDetailsEntry, LearningDetailsEntry
+from kweli.etl.models.parsers import EmploymentDetailsEntry, LearningDetailsEntry
+from kweli.etl.pipeline.batch_accumulator import BatchAccumulator, BatchData
 
 
 class TestBatchData:

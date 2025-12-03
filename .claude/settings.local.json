@@ -18,7 +18,10 @@
       "Bash(uv pip install:*)",
       "Bash(docker compose:*)",
       "Bash(docker logs:*)",
-      "Bash(docker rm:*)"
+      "Bash(docker rm:*)",
+      "Bash(python temp_db_reader.py:*)",
+      "Bash(mv:*)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []

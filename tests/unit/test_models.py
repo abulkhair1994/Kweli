@@ -5,7 +5,7 @@ from datetime import date, datetime
 import pytest
 from pydantic import ValidationError
 
-from models.enums import (
+from kweli.etl.models.enums import (
     EducationLevel,
     EmploymentType,
     EnrollmentStatus,
@@ -14,7 +14,7 @@ from models.enums import (
     ProfessionalStatus,
     SalaryRange,
 )
-from models.nodes import (
+from kweli.etl.models.nodes import (
     CityNode,
     CompanyNode,
     CountryNode,
@@ -24,14 +24,14 @@ from models.nodes import (
     ProgramNode,
     SkillNode,
 )
-from models.parsers import (
+from kweli.etl.models.parsers import (
     EducationDetailsEntry,
     EmploymentDetailsEntry,
     LearningDetailsEntry,
     PlacementDetailsVenture,
     PlacementDetailsWageEmployment,
 )
-from models.relationships import (
+from kweli.etl.models.relationships import (
     EnrolledInRelationship,
     HasProfessionalStatusRelationship,
     HasSkillRelationship,

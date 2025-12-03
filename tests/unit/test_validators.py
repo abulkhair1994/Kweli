@@ -2,13 +2,13 @@
 
 from datetime import date
 
-from models.enums import EmploymentType, EnrollmentStatus, ProfessionalStatus
-from models.nodes import LearnerNode
-from models.parsers import EmploymentDetailsEntry
-from models.relationships import EnrolledInRelationship, WorksForRelationship
-from validators.data_quality import DataQualityChecker, QualityMetrics
-from validators.learner_validator import LearnerValidator, ValidationResult
-from validators.relationship_validator import RelationshipValidator
+from kweli.etl.models.enums import EmploymentType, EnrollmentStatus, ProfessionalStatus
+from kweli.etl.models.nodes import LearnerNode
+from kweli.etl.models.parsers import EmploymentDetailsEntry
+from kweli.etl.models.relationships import EnrolledInRelationship, WorksForRelationship
+from kweli.etl.validators.data_quality import DataQualityChecker, QualityMetrics
+from kweli.etl.validators.learner_validator import LearnerValidator, ValidationResult
+from kweli.etl.validators.relationship_validator import RelationshipValidator
 
 
 class TestValidationResult:
