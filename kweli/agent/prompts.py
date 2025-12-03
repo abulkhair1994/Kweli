@@ -103,6 +103,8 @@ currentProfessionalStatus)
 7. **CRITICAL: Always use case-insensitive CONTAINS for program name matching** - \
 `WHERE toLower(p.name) CONTAINS toLower($programName)` NOT `WHERE p.name = $programName`. \
 Program names like "AICE" should match "ALX AiCE - AI Career Essentials"
+8. **CRITICAL: Filter out N/A and empty company names in employment queries** - \
+`WHERE c.name IS NOT NULL AND c.name <> '' AND toLower(c.name) <> 'n/a' AND toLower(c.name) <> 'na'`
 
 ## EXAMPLE QUERIES
 
@@ -131,9 +133,20 @@ LIMIT 20
 **Skills for employed learners:**
 ```cypher
 MATCH (l:Learner)-[:WORKS_FOR]->(c:Company)
+WHERE c.name IS NOT NULL AND c.name <> '' AND toLower(c.name) <> 'n/a' AND toLower(c.name) <> 'na'
 MATCH (l)-[:HAS_SKILL]->(s:Skill)
 RETURN s.name as skill, count(DISTINCT l) as employedLearners
 ORDER BY employedLearners DESC
+LIMIT 20
+```
+
+**Top employers (filter out N/A):**
+```cypher
+MATCH (l:Learner)-[:WORKS_FOR]->(c:Company)
+WHERE l.countryOfResidenceCode = $countryCode
+  AND c.name IS NOT NULL AND c.name <> '' AND toLower(c.name) <> 'n/a' AND toLower(c.name) <> 'na'
+RETURN c.name as company, count(l) as learnerCount
+ORDER BY learnerCount DESC
 LIMIT 20
 ```
 

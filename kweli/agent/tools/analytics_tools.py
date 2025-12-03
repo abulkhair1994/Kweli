@@ -108,6 +108,7 @@ def get_employment_rate_by_program(program_name: str | None = None, limit: int =
         MATCH (p:Program {name: $program_name})<-[:ENROLLED_IN]-(l:Learner)
         WITH p.name as program, count(DISTINCT l) as totalLearners
         MATCH (p2:Program {name: program})<-[:ENROLLED_IN]-(l2:Learner)-[:WORKS_FOR]->(c:Company)
+        WHERE c.name IS NOT NULL AND c.name <> '' AND toLower(c.name) <> 'n/a' AND toLower(c.name) <> 'na'
         WITH program, totalLearners, count(DISTINCT l2) as employedLearners
         RETURN program, totalLearners, employedLearners,
                round(100.0 * employedLearners / totalLearners, 2) as employmentRate
@@ -118,6 +119,7 @@ def get_employment_rate_by_program(program_name: str | None = None, limit: int =
         MATCH (p:Program)<-[:ENROLLED_IN]-(l:Learner)
         WITH p.name as program, count(DISTINCT l) as totalLearners
         MATCH (p2:Program {name: program})<-[:ENROLLED_IN]-(l2:Learner)-[:WORKS_FOR]->(c:Company)
+        WHERE c.name IS NOT NULL AND c.name <> '' AND toLower(c.name) <> 'n/a' AND toLower(c.name) <> 'na'
         WITH program, totalLearners, count(DISTINCT l2) as employedLearners
         WHERE totalLearners > 100
         RETURN program, totalLearners, employedLearners,
@@ -188,6 +190,7 @@ def get_learner_journey(email_hash: str) -> dict[str, Any]:
     OPTIONAL MATCH (l)-[:HAS_SKILL]->(s:Skill)
     OPTIONAL MATCH (l)-[e:ENROLLED_IN]->(p:Program)
     OPTIONAL MATCH (l)-[w:WORKS_FOR]->(c:Company)
+    WHERE c IS NULL OR (c.name IS NOT NULL AND c.name <> '' AND toLower(c.name) <> 'n/a' AND toLower(c.name) <> 'na')
     OPTIONAL MATCH (country:Country {code: l.countryOfResidenceCode})
     OPTIONAL MATCH (city:City {id: l.cityOfResidenceId})
     RETURN l.fullName as name,
@@ -204,12 +207,12 @@ def get_learner_journey(email_hash: str) -> dict[str, Any]:
                completionRate: e.completionRate,
                lmsScore: e.lmsOverallScore
            }) as programs,
-           collect(DISTINCT {
+           [emp IN collect(DISTINCT {
                company: c.name,
                position: w.position,
                isCurrent: w.isCurrent,
                startDate: w.startDate
-           }) as employment
+           }) WHERE emp.company IS NOT NULL] as employment
     LIMIT 1
     """
 
@@ -241,6 +244,7 @@ def get_skills_for_employed_learners(
         query = """
         MATCH (l:Learner)-[:WORKS_FOR]->(c:Company)
         WHERE l.countryOfResidenceCode = $country_code
+          AND c.name IS NOT NULL AND c.name <> '' AND toLower(c.name) <> 'n/a' AND toLower(c.name) <> 'na'
         MATCH (l)-[:HAS_SKILL]->(s:Skill)
         RETURN s.name as skill, count(DISTINCT l) as employedLearnersWithSkill
         ORDER BY employedLearnersWithSkill DESC
@@ -250,6 +254,7 @@ def get_skills_for_employed_learners(
     else:
         query = """
         MATCH (l:Learner)-[:WORKS_FOR]->(c:Company)
+        WHERE c.name IS NOT NULL AND c.name <> '' AND toLower(c.name) <> 'n/a' AND toLower(c.name) <> 'na'
         MATCH (l)-[:HAS_SKILL]->(s:Skill)
         RETURN s.name as skill, count(DISTINCT l) as employedLearnersWithSkill
         ORDER BY employedLearnersWithSkill DESC
@@ -306,6 +311,7 @@ def get_geographic_distribution(
         query = """
         MATCH (l:Learner)-[:WORKS_FOR]->(co:Company)
         WHERE l.countryOfResidenceCode IS NOT NULL
+          AND co.name IS NOT NULL AND co.name <> '' AND toLower(co.name) <> 'n/a' AND toLower(co.name) <> 'na'
         WITH l.countryOfResidenceCode as code, count(DISTINCT co) as count
         MATCH (c:Country {code: code})
         RETURN c.name as country, c.code as countryCode, count as companyCount
@@ -348,6 +354,7 @@ def get_time_to_employment_stats(program_name: str | None = None) -> dict[str, A
         WHERE e.graduationDate IS NOT NULL
           AND w.startDate IS NOT NULL
           AND w.startDate >= e.graduationDate
+          AND c.name IS NOT NULL AND c.name <> '' AND toLower(c.name) <> 'n/a' AND toLower(c.name) <> 'na'
         WITH duration.between(e.graduationDate, w.startDate).days as daysToEmployment
         RETURN $program_name as program,
                count(daysToEmployment) as sampleSize,
@@ -364,6 +371,7 @@ def get_time_to_employment_stats(program_name: str | None = None) -> dict[str, A
         WHERE e.graduationDate IS NOT NULL
           AND w.startDate IS NOT NULL
           AND w.startDate >= e.graduationDate
+          AND c.name IS NOT NULL AND c.name <> '' AND toLower(c.name) <> 'n/a' AND toLower(c.name) <> 'na'
         WITH p.name as program, duration.between(e.graduationDate, w.startDate).days as daysToEmployment
         WITH program, collect(daysToEmployment) as days
         WHERE size(days) > 10
