@@ -3,9 +3,12 @@
 from datetime import date
 
 from models.enums import LearningState, ProfessionalStatus
+from models.parsers import EmploymentDetailsEntry, LearningDetailsEntry
 from transformers.date_converter import DateConverter
 from transformers.geo_normalizer import GeoNormalizer
 from transformers.json_parser import JSONParser
+from transformers.learning_state_history_builder import LearningStateHistoryBuilder
+from transformers.professional_status_history_builder import ProfessionalStatusHistoryBuilder
 from transformers.skills_parser import SkillsParser
 from transformers.state_deriver import StateDeriver
 
@@ -451,3 +454,584 @@ class TestUtils:
         id2 = generate_id("test")
         assert id1 == id2
         assert len(id1) == 16
+
+
+class TestLearningStateHistoryBuilder:
+    """Test learning state history builder."""
+
+    def test_empty_learning_details(self) -> None:
+        """Test with no learning details returns empty list."""
+        builder = LearningStateHistoryBuilder()
+        history = builder.build_state_history([])
+        assert history == []
+
+    def test_single_program_active(self) -> None:
+        """Test single active program creates Active state."""
+        builder = LearningStateHistoryBuilder()
+        entries = [
+            LearningDetailsEntry(
+                index="0",
+                program_name="Software Engineering",
+                cohort_code="SE-2023-01",
+                program_start_date="2023-01-15",
+                program_end_date="2023-12-15",
+                enrollment_status="Active",
+                program_graduation_date="",
+                lms_overall_score="85",
+                no_of_assignments="10",
+                no_of_submissions="9",
+                no_of_assignment_passed="8",
+                assignment_completion_rate="90",
+                no_of_milestone="5",
+                no_of_milestone_submitted="5",
+                no_of_milestone_passed="4",
+                milestone_completion_rate="100",
+                no_of_test="3",
+                no_of_test_submitted="3",
+                no_of_test_passed="2",
+                test_completion_rate="100",
+                completion_rate="85",
+            )
+        ]
+
+        history = builder.build_state_history(entries)
+
+        assert len(history) == 1
+        assert history[0].state == LearningState.ACTIVE
+        assert history[0].start_date == date(2023, 1, 15)
+        assert history[0].is_current is True
+        assert "SE-2023-01" in history[0].reason
+
+    def test_single_program_graduate(self) -> None:
+        """Test single completed program creates Active → Graduate states."""
+        builder = LearningStateHistoryBuilder()
+        entries = [
+            LearningDetailsEntry(
+                index="0",
+                program_name="Software Engineering",
+                cohort_code="SE-2023-01",
+                program_start_date="2023-01-15",
+                program_end_date="2023-12-15",
+                enrollment_status="Graduate",
+                program_graduation_date="2023-12-20",
+                lms_overall_score="90",
+                no_of_assignments="10",
+                no_of_submissions="10",
+                no_of_assignment_passed="10",
+                assignment_completion_rate="100",
+                no_of_milestone="5",
+                no_of_milestone_submitted="5",
+                no_of_milestone_passed="5",
+                milestone_completion_rate="100",
+                no_of_test="3",
+                no_of_test_submitted="3",
+                no_of_test_passed="3",
+                test_completion_rate="100",
+                completion_rate="100",
+            )
+        ]
+
+        history = builder.build_state_history(entries)
+
+        assert len(history) == 2
+        # Active state
+        assert history[0].state == LearningState.ACTIVE
+        assert history[0].start_date == date(2023, 1, 15)
+        assert history[0].end_date == date(2023, 12, 20)  # Graduation date
+        assert history[0].is_current is False
+        # Graduate state
+        assert history[1].state == LearningState.GRADUATE
+        assert history[1].start_date == date(2023, 12, 20)
+        assert history[1].is_current is True
+        assert "Graduated" in history[1].reason
+
+    def test_single_program_dropped_out(self) -> None:
+        """Test dropped out program creates Active → Dropped Out states."""
+        builder = LearningStateHistoryBuilder()
+        entries = [
+            LearningDetailsEntry(
+                index="0",
+                program_name="Data Science",
+                cohort_code="DS-2023-02",
+                program_start_date="2023-03-01",
+                program_end_date="2023-06-15",
+                enrollment_status="Dropped Out",
+                program_graduation_date="",
+                lms_overall_score="45",
+                no_of_assignments="10",
+                no_of_submissions="4",
+                no_of_assignment_passed="3",
+                assignment_completion_rate="40",
+                no_of_milestone="5",
+                no_of_milestone_submitted="2",
+                no_of_milestone_passed="1",
+                milestone_completion_rate="40",
+                no_of_test="3",
+                no_of_test_submitted="1",
+                no_of_test_passed="0",
+                test_completion_rate="33",
+                completion_rate="40",
+            )
+        ]
+
+        history = builder.build_state_history(entries)
+
+        assert len(history) == 2
+        # Active state
+        assert history[0].state == LearningState.ACTIVE
+        assert history[0].start_date == date(2023, 3, 1)
+        assert history[0].end_date == date(2023, 6, 15)
+        assert history[0].is_current is False
+        # Dropped Out state
+        assert history[1].state == LearningState.DROPPED_OUT
+        assert history[1].start_date == date(2023, 6, 15)
+        assert history[1].is_current is True
+        assert "Dropped out" in history[1].reason
+
+    def test_multiple_programs_with_gap(self) -> None:
+        """Test multiple programs with large gap creates Inactive state."""
+        builder = LearningStateHistoryBuilder(inactive_gap_months=6)
+        entries = [
+            LearningDetailsEntry(
+                index="0",
+                program_name="Program 1",
+                cohort_code="P1-2023",
+                program_start_date="2023-01-01",
+                program_end_date="2023-06-30",
+                enrollment_status="Graduate",
+                program_graduation_date="2023-06-30",
+                lms_overall_score="90",
+                no_of_assignments="10",
+                no_of_submissions="10",
+                no_of_assignment_passed="10",
+                assignment_completion_rate="100",
+                no_of_milestone="5",
+                no_of_milestone_submitted="5",
+                no_of_milestone_passed="5",
+                milestone_completion_rate="100",
+                no_of_test="3",
+                no_of_test_submitted="3",
+                no_of_test_passed="3",
+                test_completion_rate="100",
+                completion_rate="100",
+            ),
+            LearningDetailsEntry(
+                index="1",
+                program_name="Program 2",
+                cohort_code="P2-2024",
+                program_start_date="2024-03-01",  # 8 month gap
+                program_end_date="2024-08-31",
+                enrollment_status="Active",
+                program_graduation_date="",
+                lms_overall_score="85",
+                no_of_assignments="10",
+                no_of_submissions="9",
+                no_of_assignment_passed="8",
+                assignment_completion_rate="90",
+                no_of_milestone="5",
+                no_of_milestone_submitted="5",
+                no_of_milestone_passed="4",
+                milestone_completion_rate="100",
+                no_of_test="3",
+                no_of_test_submitted="3",
+                no_of_test_passed="2",
+                test_completion_rate="100",
+                completion_rate="85",
+            ),
+        ]
+
+        history = builder.build_state_history(entries)
+
+        # Should create: Active → Graduate → Inactive → Active
+        assert len(history) == 4
+        assert history[0].state == LearningState.ACTIVE  # Program 1 Active
+        assert history[1].state == LearningState.GRADUATE  # Program 1 Graduate
+        assert history[2].state == LearningState.INACTIVE  # Gap
+        assert history[3].state == LearningState.ACTIVE  # Program 2 Active
+
+        # Verify Inactive period
+        assert history[2].start_date == date(2023, 6, 30)
+        assert history[2].end_date == date(2024, 3, 1)
+        assert "Gap" in history[2].reason
+
+        # Only last state is current
+        assert history[3].is_current is True
+
+    def test_multiple_programs_no_gap(self) -> None:
+        """Test multiple programs with small gap (no Inactive state)."""
+        builder = LearningStateHistoryBuilder(inactive_gap_months=6)
+        entries = [
+            LearningDetailsEntry(
+                index="0",
+                program_name="Program 1",
+                cohort_code="P1-2023",
+                program_start_date="2023-01-01",
+                program_end_date="2023-06-30",
+                enrollment_status="Graduate",
+                program_graduation_date="2023-06-30",
+                lms_overall_score="90",
+                no_of_assignments="10",
+                no_of_submissions="10",
+                no_of_assignment_passed="10",
+                assignment_completion_rate="100",
+                no_of_milestone="5",
+                no_of_milestone_submitted="5",
+                no_of_milestone_passed="5",
+                milestone_completion_rate="100",
+                no_of_test="3",
+                no_of_test_submitted="3",
+                no_of_test_passed="3",
+                test_completion_rate="100",
+                completion_rate="100",
+            ),
+            LearningDetailsEntry(
+                index="1",
+                program_name="Program 2",
+                cohort_code="P2-2023",
+                program_start_date="2023-08-01",  # 1 month gap (< 6 months)
+                program_end_date="2023-12-31",
+                enrollment_status="Active",
+                program_graduation_date="",
+                lms_overall_score="85",
+                no_of_assignments="10",
+                no_of_submissions="9",
+                no_of_assignment_passed="8",
+                assignment_completion_rate="90",
+                no_of_milestone="5",
+                no_of_milestone_submitted="5",
+                no_of_milestone_passed="4",
+                milestone_completion_rate="100",
+                no_of_test="3",
+                no_of_test_submitted="3",
+                no_of_test_passed="2",
+                test_completion_rate="100",
+                completion_rate="85",
+            ),
+        ]
+
+        history = builder.build_state_history(entries)
+
+        # Should create: Active → Graduate → Active (NO Inactive)
+        assert len(history) == 3
+        assert history[0].state == LearningState.ACTIVE
+        assert history[1].state == LearningState.GRADUATE
+        assert history[2].state == LearningState.ACTIVE
+
+        # No Inactive state created
+        assert all(state.state != LearningState.INACTIVE for state in history)
+
+    def test_invalid_dates_skipped(self) -> None:
+        """Test that programs with invalid dates are skipped."""
+        builder = LearningStateHistoryBuilder()
+        entries = [
+            LearningDetailsEntry(
+                index="0",
+                program_name="Invalid Program",
+                cohort_code="INV-2023",
+                program_start_date="invalid-date",  # Invalid
+                program_end_date="2023-12-31",
+                enrollment_status="Active",
+                program_graduation_date="",
+                lms_overall_score="85",
+                no_of_assignments="10",
+                no_of_submissions="9",
+                no_of_assignment_passed="8",
+                assignment_completion_rate="90",
+                no_of_milestone="5",
+                no_of_milestone_submitted="5",
+                no_of_milestone_passed="4",
+                milestone_completion_rate="100",
+                no_of_test="3",
+                no_of_test_submitted="3",
+                no_of_test_passed="2",
+                test_completion_rate="100",
+                completion_rate="85",
+            )
+        ]
+
+        history = builder.build_state_history(entries)
+
+        # Invalid program should be skipped
+        assert history == []
+
+
+class TestProfessionalStatusHistoryBuilder:
+    """Test professional status history builder."""
+
+    def test_empty_employment_details(self) -> None:
+        """Test with no employment details returns initial unemployed."""
+        builder = ProfessionalStatusHistoryBuilder(infer_initial_unemployment=True)
+        history = builder.build_status_history([])
+        assert len(history) == 1
+        assert history[0].status == ProfessionalStatus.UNEMPLOYED
+
+    def test_empty_employment_no_inference(self) -> None:
+        """Test with no employment and no inference returns empty."""
+        builder = ProfessionalStatusHistoryBuilder(infer_initial_unemployment=False)
+        history = builder.build_status_history([])
+        assert history == []
+
+    def test_single_job_wage_employed(self) -> None:
+        """Test single wage employment creates Unemployed → Wage Employed."""
+        builder = ProfessionalStatusHistoryBuilder()
+        entries = [
+            EmploymentDetailsEntry(
+                index="0",
+                organization_name="Tech Corp",
+                start_date="2023-01-15",
+                end_date="",  # Current job
+                country="Egypt",
+                job_title="Software Engineer",
+                is_current="1",
+                duration_in_years="1.5",
+            )
+        ]
+
+        history = builder.build_status_history(entries)
+
+        assert len(history) == 2
+        # Initial unemployed
+        assert history[0].status == ProfessionalStatus.UNEMPLOYED
+        assert history[0].end_date == date(2023, 1, 15)
+        # Wage employed
+        assert history[1].status == ProfessionalStatus.WAGE_EMPLOYED
+        assert history[1].start_date == date(2023, 1, 15)
+        assert history[1].is_current is True
+        assert "Tech Corp" in history[1].details
+
+    def test_single_job_entrepreneur(self) -> None:
+        """Test venture/entrepreneur job creates Unemployed → Entrepreneur."""
+        builder = ProfessionalStatusHistoryBuilder()
+        entries = [
+            EmploymentDetailsEntry(
+                index="0",
+                organization_name="My Startup",
+                start_date="2023-06-01",
+                end_date="",
+                country="Kenya",
+                job_title="Founder & CEO",
+                is_current="1",
+                duration_in_years="0.5",
+            )
+        ]
+
+        history = builder.build_status_history(entries)
+
+        assert len(history) == 2
+        assert history[0].status == ProfessionalStatus.UNEMPLOYED
+        assert history[1].status == ProfessionalStatus.ENTREPRENEUR
+        assert history[1].is_current is True
+        assert "Founder" in history[1].details
+
+    def test_single_job_freelancer(self) -> None:
+        """Test freelance job creates Unemployed → Freelancer."""
+        builder = ProfessionalStatusHistoryBuilder()
+        entries = [
+            EmploymentDetailsEntry(
+                index="0",
+                organization_name="Self-Employed",
+                start_date="2023-03-01",
+                end_date="",
+                country="Nigeria",
+                job_title="Freelance Developer",
+                is_current="1",
+                duration_in_years="1.0",
+            )
+        ]
+
+        history = builder.build_status_history(entries)
+
+        assert len(history) == 2
+        assert history[0].status == ProfessionalStatus.UNEMPLOYED
+        assert history[1].status == ProfessionalStatus.FREELANCER
+        assert history[1].is_current is True
+
+    def test_job_ended_unemployed(self) -> None:
+        """Test ended job creates Unemployed → Wage Employed → Unemployed."""
+        builder = ProfessionalStatusHistoryBuilder()
+        entries = [
+            EmploymentDetailsEntry(
+                index="0",
+                organization_name="Old Corp",
+                start_date="2023-01-01",
+                end_date="2023-12-31",
+                country="Egypt",
+                job_title="Analyst",
+                is_current="0",
+                duration_in_years="1.0",
+            )
+        ]
+
+        # No current status flags, so should create final unemployed
+        history = builder.build_status_history(entries, current_status_flags=None)
+
+        assert len(history) == 3
+        assert history[0].status == ProfessionalStatus.UNEMPLOYED  # Before
+        assert history[1].status == ProfessionalStatus.WAGE_EMPLOYED  # During
+        assert history[1].end_date == date(2023, 12, 31)
+        assert history[2].status == ProfessionalStatus.UNEMPLOYED  # After
+        assert history[2].start_date == date(2023, 12, 31)
+        assert history[2].is_current is True
+
+    def test_multiple_jobs_no_gap(self) -> None:
+        """Test consecutive jobs with small gap (no unemployment)."""
+        builder = ProfessionalStatusHistoryBuilder(unemployment_gap_months=1)
+        entries = [
+            EmploymentDetailsEntry(
+                index="0",
+                organization_name="Company A",
+                start_date="2023-01-01",
+                end_date="2023-06-30",
+                country="Egypt",
+                job_title="Junior Dev",
+                is_current="0",
+                duration_in_years="0.5",
+            ),
+            EmploymentDetailsEntry(
+                index="1",
+                organization_name="Company B",
+                start_date="2023-07-15",  # 15 days gap
+                end_date="",
+                country="Egypt",
+                job_title="Senior Dev",
+                is_current="1",
+                duration_in_years="0.5",
+            ),
+        ]
+
+        history = builder.build_status_history(entries)
+
+        # Should create: Unemployed → Wage(A) → Wage(B)
+        assert len(history) == 3
+        assert history[0].status == ProfessionalStatus.UNEMPLOYED
+        assert history[1].status == ProfessionalStatus.WAGE_EMPLOYED
+        assert "Company A" in history[1].details
+        assert history[2].status == ProfessionalStatus.WAGE_EMPLOYED
+        assert "Company B" in history[2].details
+        assert history[2].is_current is True
+
+        # No unemployment gap created
+        assert all(s.status != ProfessionalStatus.UNEMPLOYED or "Before" in s.details for s in history)
+
+    def test_multiple_jobs_with_gap(self) -> None:
+        """Test jobs with large gap creates unemployment period."""
+        builder = ProfessionalStatusHistoryBuilder(unemployment_gap_months=1)
+        entries = [
+            EmploymentDetailsEntry(
+                index="0",
+                organization_name="Company A",
+                start_date="2023-01-01",
+                end_date="2023-03-31",
+                country="Egypt",
+                job_title="Dev",
+                is_current="0",
+                duration_in_years="0.25",
+            ),
+            EmploymentDetailsEntry(
+                index="1",
+                organization_name="Company B",
+                start_date="2023-08-01",  # 4 month gap
+                end_date="",
+                country="Egypt",
+                job_title="Dev",
+                is_current="1",
+                duration_in_years="0.5",
+            ),
+        ]
+
+        history = builder.build_status_history(entries)
+
+        # Should create: Unemployed → Wage(A) → Unemployed(gap) → Wage(B)
+        assert len(history) == 4
+        assert history[0].status == ProfessionalStatus.UNEMPLOYED  # Initial
+        assert history[1].status == ProfessionalStatus.WAGE_EMPLOYED  # Job A
+        assert history[2].status == ProfessionalStatus.UNEMPLOYED  # Gap
+        assert "Gap" in history[2].details
+        assert history[2].start_date == date(2023, 3, 31)
+        assert history[2].end_date == date(2023, 8, 1)
+        assert history[3].status == ProfessionalStatus.WAGE_EMPLOYED  # Job B
+        assert history[3].is_current is True
+
+    def test_current_status_from_flags(self) -> None:
+        """Test that current status from flags overrides inferred status."""
+        builder = ProfessionalStatusHistoryBuilder()
+        entries = [
+            EmploymentDetailsEntry(
+                index="0",
+                organization_name="Old Job",
+                start_date="2023-01-01",
+                end_date="2023-06-30",  # Ended
+                country="Egypt",
+                job_title="Dev",
+                is_current="0",
+                duration_in_years="0.5",
+            )
+        ]
+
+        # Current flags indicate wage employed (new job not in employment_details)
+        current_status_flags = {
+            "is_wage": True,
+            "is_venture": False,
+            "is_freelancer": False,
+        }
+
+        history = builder.build_status_history(
+            entries,
+            current_status_flags=current_status_flags,
+        )
+
+        # Should create: Unemployed → Wage(Old) → Wage(Current from flags)
+        assert len(history) == 3
+        assert history[0].status == ProfessionalStatus.UNEMPLOYED
+        assert history[1].status == ProfessionalStatus.WAGE_EMPLOYED
+        assert history[1].end_date == date(2023, 6, 30)
+        assert history[2].status == ProfessionalStatus.WAGE_EMPLOYED
+        assert history[2].is_current is True
+        assert "placement/flags" in history[2].details
+
+    def test_placement_venture_classification(self) -> None:
+        """Test that placement_is_venture affects classification."""
+        builder = ProfessionalStatusHistoryBuilder()
+        entries = [
+            EmploymentDetailsEntry(
+                index="0",
+                organization_name="TechCo",
+                start_date="2023-01-01",
+                end_date="",
+                country="Egypt",
+                job_title="Product Manager",  # Not a venture keyword
+                is_current="1",
+                duration_in_years="1.0",
+            )
+        ]
+
+        history = builder.build_status_history(
+            entries,
+            placement_is_venture=True,  # Placement indicates it's a venture
+        )
+
+        # Should classify as entrepreneur because of placement_is_venture
+        assert len(history) == 2
+        assert history[1].status == ProfessionalStatus.ENTREPRENEUR
+
+    def test_invalid_dates_skipped(self) -> None:
+        """Test that jobs with invalid dates are skipped."""
+        builder = ProfessionalStatusHistoryBuilder()
+        entries = [
+            EmploymentDetailsEntry(
+                index="0",
+                organization_name="Invalid Corp",
+                start_date="invalid-date",  # Invalid
+                end_date="2023-12-31",
+                country="Egypt",
+                job_title="Dev",
+                is_current="0",
+                duration_in_years="1.0",
+            )
+        ]
+
+        history = builder.build_status_history(entries)
+
+        # Invalid job should be skipped, only initial unemployed created
+        assert len(history) == 1
+        assert history[0].status == ProfessionalStatus.UNEMPLOYED

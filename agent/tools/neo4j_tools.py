@@ -10,6 +10,7 @@ from langchain_core.tools import tool
 from neo4j import GraphDatabase, Result
 
 from agent.config import get_config
+from agent.query_status import notify_query_end, notify_query_start
 from agent.tools.validation import validate_cypher_query, validate_query_parameters
 
 # Suppress Neo4j driver notifications/warnings
@@ -102,6 +103,7 @@ class Neo4jExecutor:
         # Execute query
         timeout = timeout or self.config.agent.query_timeout
 
+        notify_query_start()
         try:
             with self.driver.session() as session:
                 result: Result = session.run(
@@ -113,6 +115,8 @@ class Neo4jExecutor:
                 return records
         except Exception as e:
             raise Exception(f"Query execution failed: {e}") from e
+        finally:
+            notify_query_end()
 
     def get_schema(self, use_cache: bool = True) -> dict[str, Any]:
         """

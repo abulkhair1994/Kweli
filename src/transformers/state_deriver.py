@@ -3,6 +3,8 @@ State deriver for learning and professional status.
 
 Derives temporal state from boolean flags (is_active_learner, is_graduate_learner, etc.)
 and from employment_details JSON (which is more accurate than flags).
+
+Also builds complete temporal histories from learning_details and employment_details arrays.
 """
 
 from datetime import date
@@ -11,6 +13,9 @@ from structlog.types import FilteringBoundLogger
 
 from models.enums import LearningState, ProfessionalStatus
 from models.nodes import LearningStateNode, ProfessionalStatusNode
+from models.parsers import EmploymentDetailsEntry, LearningDetailsEntry
+from transformers.learning_state_history_builder import LearningStateHistoryBuilder
+from transformers.professional_status_history_builder import ProfessionalStatusHistoryBuilder
 from utils.logger import get_logger
 
 
@@ -20,6 +25,9 @@ class StateDeriver:
     def __init__(
         self,
         default_snapshot_date: str | date = "2025-10-06",
+        inactive_gap_months: int = 6,
+        unemployment_gap_months: int = 1,
+        infer_initial_unemployment: bool = True,
         logger: FilteringBoundLogger | None = None,
     ) -> None:
         """
@@ -27,9 +35,15 @@ class StateDeriver:
 
         Args:
             default_snapshot_date: Default date for state snapshots
+            inactive_gap_months: Gap in months to consider learner inactive
+            unemployment_gap_months: Gap in months to consider unemployed
+            infer_initial_unemployment: Create unemployed status before first job
             logger: Optional logger instance
         """
         self.logger = logger or get_logger(__name__)
+        self.inactive_gap_months = inactive_gap_months
+        self.unemployment_gap_months = unemployment_gap_months
+        self.infer_initial_unemployment = infer_initial_unemployment
 
         # Parse snapshot date
         if isinstance(default_snapshot_date, str):
@@ -37,6 +51,17 @@ class StateDeriver:
             self.snapshot_date = date(int(parts[0]), int(parts[1]), int(parts[2]))
         else:
             self.snapshot_date = default_snapshot_date
+
+        # Initialize history builders
+        self.learning_state_history_builder = LearningStateHistoryBuilder(
+            inactive_gap_months=inactive_gap_months,
+            logger=self.logger,
+        )
+        self.professional_status_history_builder = ProfessionalStatusHistoryBuilder(
+            unemployment_gap_months=unemployment_gap_months,
+            infer_initial_unemployment=infer_initial_unemployment,
+            logger=self.logger,
+        )
 
     def derive_learning_state(
         self,
@@ -186,6 +211,68 @@ class StateDeriver:
             end_date=None,
             is_current=True,
         )
+
+    def derive_learning_state_history(
+        self,
+        learning_details: list[LearningDetailsEntry],
+        fallback_state: LearningState | None = None,
+    ) -> list[LearningStateNode]:
+        """
+        Derive complete learning state history from learning_details array.
+
+        This builds multiple LearningStateNode instances representing the full
+        temporal timeline of state transitions.
+
+        Args:
+            learning_details: List of learning details entries
+            fallback_state: State to use if no history can be built
+
+        Returns:
+            List of LearningStateNode instances in chronological order
+        """
+        # Build history from learning_details
+        history = self.learning_state_history_builder.build_state_history(learning_details)
+
+        # If no history could be built and we have a fallback state, create snapshot
+        if not history and fallback_state:
+            history = [self.create_learning_state_node(fallback_state)]
+
+        return history
+
+    def derive_professional_status_history(
+        self,
+        employment_details: list[EmploymentDetailsEntry],
+        current_status_flags: dict[str, bool] | None = None,
+        placement_is_venture: bool = False,
+        fallback_status: ProfessionalStatus | None = None,
+    ) -> list[ProfessionalStatusNode]:
+        """
+        Derive complete professional status history from employment_details array.
+
+        This builds multiple ProfessionalStatusNode instances representing the full
+        career progression timeline.
+
+        Args:
+            employment_details: List of employment details entries
+            current_status_flags: Optional dict with is_wage, is_venture, is_freelancer
+            placement_is_venture: Whether placement is a venture
+            fallback_status: Status to use if no history can be built
+
+        Returns:
+            List of ProfessionalStatusNode instances in chronological order
+        """
+        # Build history from employment_details
+        history = self.professional_status_history_builder.build_status_history(
+            employment_details,
+            current_status_flags=current_status_flags,
+            placement_is_venture=placement_is_venture,
+        )
+
+        # If no history could be built and we have a fallback status, create snapshot
+        if not history and fallback_status:
+            history = [self.create_professional_status_node(fallback_status)]
+
+        return history
 
 
 __all__ = ["StateDeriver"]

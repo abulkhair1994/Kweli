@@ -200,7 +200,7 @@ class Transformer:
         entities: GraphEntities,
     ) -> None:
         """Derive learning and professional states."""
-        # Derive learning state
+        # Derive current learning state from flags (for learner's current_learning_state property)
         learning_state = self.state_deriver.derive_learning_state(
             raw_fields.get("is_active_learner"),
             raw_fields.get("is_graduate_learner"),
@@ -208,11 +208,22 @@ class Transformer:
         )
         learner_dict["current_learning_state"] = learning_state
 
-        # Create learning state node (temporal)
-        learning_state_node = self.state_deriver.create_learning_state_node(learning_state)
-        entities.learning_states.append(learning_state_node)
+        # Build FULL learning state history from learning_details
+        learning_details_str = raw_fields.get("learning_details")
+        if learning_details_str:
+            # Parse learning_details to build temporal history
+            learning_details_entries = self.json_parser.parse_learning_details(learning_details_str)
+            learning_state_history = self.state_deriver.derive_learning_state_history(
+                learning_details_entries,
+                fallback_state=learning_state,  # Use derived state as fallback
+            )
+            entities.learning_states.extend(learning_state_history)
+        else:
+            # No learning_details, create single snapshot state
+            learning_state_node = self.state_deriver.create_learning_state_node(learning_state)
+            entities.learning_states.append(learning_state_node)
 
-        # Derive professional status (with current job count and placement info)
+        # Derive current professional status (with current job count and placement info)
         prof_status = self.state_deriver.derive_professional_status(
             raw_fields.get("is_running_a_venture"),
             raw_fields.get("is_a_freelancer"),
@@ -223,9 +234,30 @@ class Transformer:
         )
         learner_dict["current_professional_status"] = prof_status
 
-        # Create professional status node (temporal)
-        prof_status_node = self.state_deriver.create_professional_status_node(prof_status)
-        entities.professional_statuses.append(prof_status_node)
+        # Build FULL professional status history from employment_details
+        employment_details_str = raw_fields.get("employment_details")
+        if employment_details_str:
+            # Parse employment_details to build temporal history
+            employment_details_entries = self.json_parser.parse_employment_details(employment_details_str)
+
+            # Prepare current status flags for history builder
+            current_status_flags = {
+                "is_wage": bool(raw_fields.get("is_wage_employed")),
+                "is_venture": bool(raw_fields.get("is_running_a_venture")),
+                "is_freelancer": bool(raw_fields.get("is_a_freelancer")),
+            }
+
+            prof_status_history = self.state_deriver.derive_professional_status_history(
+                employment_details_entries,
+                current_status_flags=current_status_flags,
+                placement_is_venture=entities.placement_is_venture,
+                fallback_status=prof_status,  # Use derived status as fallback
+            )
+            entities.professional_statuses.extend(prof_status_history)
+        else:
+            # No employment_details, create single snapshot status
+            prof_status_node = self.state_deriver.create_professional_status_node(prof_status)
+            entities.professional_statuses.append(prof_status_node)
 
     def _process_skills(
         self,

@@ -14,7 +14,11 @@
       "Bash(python -c:*)",
       "Bash(AGENT_VERBOSE=true python -m agent.cli:*)",
       "Bash(find:*)",
-      "Bash(uv run:*)"
+      "Bash(uv run:*)",
+      "Bash(uv pip install:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker rm:*)"
     ],
     "deny": [],
     "ask": []

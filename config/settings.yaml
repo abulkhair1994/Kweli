@@ -65,9 +65,17 @@ transformers:
 
   # Temporal state tracking
   temporal:
+    # Basic temporal tracking (snapshot mode)
     enable_learning_state_tracking: true
     enable_professional_status_tracking: true
     default_snapshot_date: "2025-10-06"
+
+    # Temporal history tracking (SCD Type 2 mode)
+    enable_learning_state_history: true  # Build full history from learning_details
+    enable_professional_status_history: true  # Build full history from employment_details
+    inactive_gap_months: 6  # Gap to consider learner inactive between programs
+    unemployment_gap_months: 1  # Gap to consider unemployed between jobs
+    infer_initial_unemployment: true  # Create unemployed status before first job
 
 logging:
   level: INFO

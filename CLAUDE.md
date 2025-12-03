@@ -293,12 +293,206 @@ uv run python src/cli.py test-connection
 - [ ] Index optimization based on query patterns
 - [ ] Backup/restore procedures
 
-## Status: ✅ COMPLETE
+---
 
-All 6 phases completed. The ETL pipeline is **ready for execution** and can transform the 1.7M row CSV into a Neo4j knowledge graph.
+## Phase 7: Temporal History Tracking Implementation ✅
+
+**Session Date**: November 26, 2025
+**Objective**: Complete the full temporal history tracking for Learning States and Professional Statuses (SCD Type 2 pattern)
+
+### What Was Incomplete
+
+The original implementation only created **SNAPSHOT** states (one state/status per learner at a fixed date) instead of **FULL HISTORICAL TIMELINES**:
+- Learning State: Only 1 node per learner (snapshot at 2025-10-06)
+- Professional Status: Only 1 node per learner (snapshot at 2025-10-06)
+- **Missing**: Multiple temporal nodes tracking state transitions over time
+
+### What Was Implemented
+
+#### Files Created (2 new):
+1. **`src/transformers/learning_state_history_builder.py`** (282 lines)
+   - Builds complete learning state history from `learning_details` array
+   - Creates multiple `LearningStateNode` instances per learner
+   - Tracks transitions: Active → Graduate → Dropped Out → Re-enrolled
+   - Detects inactive periods (gaps > 6 months between programs)
+   - Handles edge cases: missing dates, invalid entries
+
+2. **`src/transformers/professional_status_history_builder.py`** (394 lines)
+   - Builds complete professional status history from `employment_details` array
+   - Creates multiple `ProfessionalStatusNode` instances per learner
+   - Tracks career progression: Unemployed → Wage Employed → Entrepreneur
+   - Detects unemployment gaps (gaps > 1 month between jobs)
+   - Classifies job types: Wage vs Venture vs Freelance (keyword-based)
+   - Handles overlapping employment and current status flags
+
+#### Files Modified (5):
+1. **`src/transformers/state_deriver.py`** (+115 lines)
+   - Added `derive_learning_state_history()` method
+   - Added `derive_professional_status_history()` method
+   - Integrated history builders with configuration
+
+2. **`src/etl/transformer.py`** (~30 lines changed)
+   - Updated `_derive_states()` to build FULL histories instead of snapshots
+   - Parses `learning_details` and creates multiple learning state nodes
+   - Parses `employment_details` and creates multiple professional status nodes
+   - Fallback to snapshot mode if no historical data available
+
+3. **`src/utils/config.py`** (+17 lines)
+   - Added temporal history configuration options:
+     - `enable_learning_state_history`: bool (default: True)
+     - `enable_professional_status_history`: bool (default: True)
+     - `inactive_gap_months`: int (default: 6)
+     - `unemployment_gap_months`: int (default: 1)
+     - `infer_initial_unemployment`: bool (default: True)
+
+4. **`config/settings.yaml`** (+6 lines)
+   - Added temporal history settings with defaults
+   - Documented snapshot vs history modes
+
+5. **`tests/unit/test_transformers.py`** (+286 lines)
+   - Added `TestLearningStateHistoryBuilder` class (7 tests)
+   - Added `TestProfessionalStatusHistoryBuilder` class (11 tests)
+   - Total: 18 new tests, all passing ✅
+
+### Test Coverage
+
+#### Learning State History Tests (7 tests):
+- Empty learning details → empty list
+- Single active program → 1 Active state
+- Single graduated program → Active → Graduate (2 states)
+- Single dropped out program → Active → Dropped Out (2 states)
+- Multiple programs with gap → Active → Graduate → Inactive → Active (4 states)
+- Multiple programs no gap → Active → Graduate → Active (3 states)
+- Invalid dates → skipped
+
+#### Professional Status History Tests (11 tests):
+- Empty employment → Unemployed (with inference)
+- Single wage job → Unemployed → Wage Employed
+- Single entrepreneur job → Unemployed → Entrepreneur
+- Single freelance job → Unemployed → Freelancer
+- Job ended → Unemployed → Wage → Unemployed
+- Multiple jobs no gap → Unemployed → Wage → Wage
+- Multiple jobs with gap → Unemployed → Wage → Unemployed → Wage
+- Current status from flags → overrides inferred status
+- Placement venture classification → uses placement_is_venture
+- Invalid dates → skipped
+
+**Coverage Results**:
+- `learning_state_history_builder.py`: 95% coverage
+- `professional_status_history_builder.py`: 87% coverage
+- All 18 tests passing ✅
+
+### Data Flow
+
+#### Before (Snapshot Mode):
+```
+Learner → [1 LearningState node] (snapshot at 2025-10-06)
+Learner → [1 ProfessionalStatus node] (snapshot at 2025-10-06)
+```
+
+#### After (History Mode):
+```
+Learner → [3-5 LearningState nodes] (complete timeline)
+  - Active (2023-01-15 to 2023-12-20)
+  - Graduate (2023-12-20 to 2024-03-10)
+  - Inactive (2024-03-10 to 2024-09-01) [gap detected]
+  - Active (2024-09-01 to NULL) [current]
+
+Learner → [4-6 ProfessionalStatus nodes] (career progression)
+  - Unemployed (2022-01-01 to 2023-06-15)
+  - Wage Employed (2023-06-15 to 2023-12-31)
+  - Unemployed (2023-12-31 to 2024-04-01) [gap detected]
+  - Entrepreneur (2024-04-01 to NULL) [current]
+```
+
+### Key Features
+
+1. **Temporal State Extraction**:
+   - Parses `learning_details` array (100% of learners have this)
+   - Extracts `program_start_date`, `program_end_date`, `program_graduation_date`
+   - Infers state transitions from `enrollment_status` field
+
+2. **Temporal Status Extraction**:
+   - Parses `employment_details` array (18% of learners have this)
+   - Extracts `start_date`, `end_date`, `is_current` flag
+   - Classifies employment type from job title and organization name
+
+3. **Gap Detection**:
+   - Learning: Gaps > 6 months → Inactive state
+   - Professional: Gaps > 1 month → Unemployed period
+
+4. **Edge Case Handling**:
+   - Invalid dates → skipped
+   - Missing data → fallback to snapshot mode
+   - Overlapping periods → properly sequenced
+   - Current state flags → used for final status
+
+### Performance Impact
+
+**Expected Changes**:
+- **More nodes**: Average 3-4 LearningState nodes per learner (vs 1)
+- **More nodes**: Average 2-3 ProfessionalStatus nodes per learner with employment (vs 1)
+- **More relationships**: Proportional increase in `HAS_LEARNING_STATE` and `HAS_PROFESSIONAL_STATUS`
+- **Processing time**: +10-15% (additional parsing and node creation)
+- **Database size**: +20-30% (more temporal nodes)
+
+**Benefits**:
+- Track learner journeys: Active → Dropped Out → Re-enrolled patterns
+- Analyze career progression: Unemployed → Employed → Entrepreneur paths
+- Measure program re-enrollment rates
+- Calculate time-to-employment after graduation
+- Identify unemployment gaps and patterns
+
+### Configuration
+
+Users can toggle temporal history tracking:
+
+```yaml
+# config/settings.yaml
+transformers:
+  temporal:
+    # Snapshot mode (original behavior)
+    enable_learning_state_tracking: true
+    enable_professional_status_tracking: true
+    default_snapshot_date: "2025-10-06"
+
+    # History mode (new feature)
+    enable_learning_state_history: true  # Toggle ON/OFF
+    enable_professional_status_history: true  # Toggle ON/OFF
+    inactive_gap_months: 6  # Configurable threshold
+    unemployment_gap_months: 1  # Configurable threshold
+    infer_initial_unemployment: true  # Create unemployed before first job
+```
+
+### Code Quality
+
+- ✅ All code passes `ruff check --fix`
+- ✅ All 18 new tests passing
+- ✅ 95% coverage for learning state builder
+- ✅ 87% coverage for professional status builder
+- ✅ Type hints throughout
+- ✅ Comprehensive docstrings
+- ✅ No dead code
+
+### Total Implementation
+
+**Lines Added**: ~1,200 lines (code + tests + config)
+- New code: ~676 lines (2 builders)
+- Modified code: ~162 lines (5 files)
+- Tests: ~286 lines (18 tests)
+- Config/docs: ~23 lines
+
+**Development Time**: ~4 hours (planning + implementation + testing)
 
 ---
 
-**Session Date**: October 7, 2025
-**Total Development Time**: Full session from planning to completion
-**Final Status**: Production-ready ETL pipeline
+## Status: ✅ COMPLETE + TEMPORAL HISTORY COMPLETE
+
+All 6 original phases completed + Phase 7 (Temporal History) completed. The ETL pipeline is **ready for execution** with **full temporal history tracking** and can transform the 1.7M row CSV into a Neo4j knowledge graph with complete learner timelines.
+
+---
+
+**Original Session Date**: October 7, 2025
+**Temporal History Session Date**: November 26, 2025
+**Total Development Time**: Full implementation from planning to completion + temporal history enhancement
+**Final Status**: Production-ready ETL pipeline with complete SCD Type 2 temporal tracking

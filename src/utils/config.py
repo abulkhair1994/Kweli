@@ -66,11 +66,29 @@ class GeographyConfig(BaseModel):
 class TemporalConfig(BaseModel):
     """Temporal tracking configuration."""
 
+    # Basic temporal tracking (snapshot mode)
     enable_learning_state_tracking: bool = Field(True, description="Track learning states")
     enable_professional_status_tracking: bool = Field(
         True, description="Track professional status"
     )
     default_snapshot_date: str = Field("2025-10-06", description="Default snapshot date")
+
+    # Temporal history tracking (SCD Type 2 mode)
+    enable_learning_state_history: bool = Field(
+        True, description="Build full learning state history from learning_details"
+    )
+    enable_professional_status_history: bool = Field(
+        True, description="Build full professional status history from employment_details"
+    )
+    inactive_gap_months: int = Field(
+        6, description="Gap in months to consider learner inactive between programs"
+    )
+    unemployment_gap_months: int = Field(
+        1, description="Gap in months to consider learner unemployed between jobs"
+    )
+    infer_initial_unemployment: bool = Field(
+        True, description="Create unemployed status before first job"
+    )
 
 
 class TransformersConfig(BaseModel):

@@ -76,6 +76,26 @@ class CachingConfig(BaseModel):
     max_cache_size: int = Field(default=100)  # Max cached items
 
 
+class LangfuseConfig(BaseModel):
+    """Langfuse observability configuration."""
+
+    enabled: bool = Field(default=False)
+    secret_key: str | None = Field(default=None)
+    public_key: str | None = Field(default=None)
+    host: str = Field(default="https://cloud.langfuse.com")
+
+    @classmethod
+    def from_env(cls) -> "LangfuseConfig":
+        """Load Langfuse config from environment variables."""
+        secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+        return cls(
+            enabled=secret_key is not None,
+            secret_key=secret_key,
+            public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
+            host=os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+        )
+
+
 class Config(BaseModel):
     """Complete configuration for the Analytics Agent."""
 
@@ -83,6 +103,7 @@ class Config(BaseModel):
     llm: LLMConfig
     agent: AgentConfig
     caching: CachingConfig
+    langfuse: LangfuseConfig
 
     @classmethod
     def load(cls, config_file: str | Path | None = None) -> "Config":
@@ -133,11 +154,15 @@ class Config(BaseModel):
             max_cache_size=int(os.getenv("CACHE_MAX_SIZE", "100")),
         )
 
+        # Langfuse config
+        langfuse_config = LangfuseConfig.from_env()
+
         return cls(
             neo4j=neo4j_config,
             llm=llm_config,
             agent=agent_config,
             caching=caching_config,
+            langfuse=langfuse_config,
         )
 
 

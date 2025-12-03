@@ -1,19 +1,69 @@
 """CLI interface for Kweli - The Impact Learners Analytics Agent."""
 
 import sys
+import threading
+import time
 import uuid
 
 import click
 from rich.console import Console
+from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.spinner import Spinner
 
+from agent.callbacks import flush_langfuse
 from agent.config import get_config, reset_config
 from agent.context import ContextExtractor
 from agent.graph import AnalyticsAgent
+from agent.query_status import is_query_active
+from agent.query_status import reset as reset_query_status
 from agent.tools.neo4j_tools import get_executor
 
 console = Console()
+
+
+def run_with_query_spinner(
+    agent: AnalyticsAgent,
+    query: str,
+    thread_id: str | None = None,
+) -> str:
+    """Run agent query with spinner that shows only during DB operations."""
+    result: str | None = None
+    error: Exception | None = None
+
+    def worker():
+        nonlocal result, error
+        try:
+            if thread_id:
+                result = agent.query(query, thread_id=thread_id)
+            else:
+                result = agent.query(query)
+        except Exception as e:
+            error = e
+
+    # Start worker thread
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+
+    # Monitor and display spinner only during DB queries
+    spinner = Spinner("dots", text="[dim cyan]querying...[/dim cyan]")
+    empty = ""
+
+    with Live(empty, console=console, transient=True, refresh_per_second=10) as live:
+        while thread.is_alive():
+            if is_query_active():
+                live.update(spinner)
+            else:
+                live.update(empty)
+            time.sleep(0.05)
+
+    thread.join()
+    reset_query_status()
+
+    if error:
+        raise error
+    return result  # type: ignore
 
 
 @click.group()
@@ -53,36 +103,20 @@ def chat(verbose: bool, show_tools: bool):
         )
         sys.exit(1)
 
-    # Welcome message
-    console.print(
-        Panel(
-            "[bold cyan]Kweli[/bold cyan] - Your Truthful Guide to Impact Learners Data\n\n"
-            "Ask me anything about learners, programs, skills, or employment outcomes!\n\n"
-            "Examples:\n"
-            "  • How many learners are from Egypt?\n"
-            "  • What's the completion rate for Software Engineering?\n"
-            "  • Show me the top 10 skills for employed learners\n"
-            "  • What's the employment rate by program?\n\n"
-            "[dim]Special commands:[/dim]\n"
-            "  • [cyan]reset[/cyan] - Clear conversation context\n"
-            "  • [cyan]context[/cyan] - Show active filters\n"
-            "  • [cyan]exit[/cyan] or [cyan]quit[/cyan] - End session",
-            title="✨ Kweli Analytics",
-            border_style="cyan",
-        )
-    )
+    # Welcome message (compact)
+    console.print("[bold cyan]✨ Kweli[/bold cyan] - Your Truthful Guide to Impact Learners Data")
+    console.print("[dim]Commands: reset | context | exit • Type 'examples' for query ideas[/dim]")
+    console.rule(style="dim cyan")
 
     # Initialize agent
     try:
         agent = AnalyticsAgent()
-        console.print("[green]✓[/green] Agent initialized successfully\n")
     except Exception as e:
         console.print(f"[red]Error initializing agent: {e}[/red]")
         sys.exit(1)
 
     # Generate session thread ID for conversation persistence
     thread_id = str(uuid.uuid4())
-    console.print(f"[dim]Session ID: {thread_id[:8]}...[/dim]\n")
 
     # Track active filters for context display
     active_filters = {}
@@ -103,6 +137,17 @@ def chat(verbose: bool, show_tools: bool):
                 thread_id = str(uuid.uuid4())
                 active_filters = {}
                 console.print(f"[green]✓[/green] Context reset. New session: {thread_id[:8]}...\n")
+                continue
+
+            # Handle examples command - show query examples
+            if user_query.lower() == "examples":
+                console.print(
+                    "[dim]Example queries:[/dim]\n"
+                    "  • How many learners are from Egypt?\n"
+                    "  • What's the completion rate for Software Engineering?\n"
+                    "  • Show me the top 10 skills for employed learners\n"
+                    "  • What's the employment rate by program?\n"
+                )
                 continue
 
             # Handle context command - show active filters
@@ -127,7 +172,6 @@ def chat(verbose: bool, show_tools: bool):
 
             # Show status indicator with tool execution details
             if show_tools or verbose:
-                console.print("[dim]🤔 Analyzing query...[/dim]")
 
                 # Stream execution to show tools
                 for state in agent.stream_query(user_query, thread_id=thread_id):
@@ -154,8 +198,7 @@ def chat(verbose: bool, show_tools: bool):
                 # Get final response
                 response = agent.query(user_query, thread_id=thread_id)
             else:
-                with console.status("[cyan]🔍 Analyzing query...[/cyan]", spinner="dots"):
-                    response = agent.query(user_query, thread_id=thread_id)
+                response = run_with_query_spinner(agent, user_query, thread_id)
 
             # Display response
             console.print(
@@ -181,6 +224,7 @@ def chat(verbose: bool, show_tools: bool):
             console.print(f"[red]Error: {e}[/red]\n")
 
     # Cleanup
+    flush_langfuse()  # Ensure all Langfuse events are sent
     executor = get_executor()
     executor.close()
 
@@ -221,8 +265,7 @@ def query(query: str, verbose: bool):
 
     # Execute query
     try:
-        with console.status("[yellow]Analyzing query...[/yellow]", spinner="dots"):
-            response = agent.query(query)
+        response = run_with_query_spinner(agent, query)
 
         # Display response
         console.print(Markdown(response))
@@ -232,6 +275,7 @@ def query(query: str, verbose: bool):
         sys.exit(1)
     finally:
         # Cleanup
+        flush_langfuse()  # Ensure all Langfuse events are sent
         executor = get_executor()
         executor.close()
 

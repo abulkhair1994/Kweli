@@ -3,12 +3,15 @@
 from typing import Literal
 
 from langchain_anthropic import ChatAnthropic
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 
+from agent.callbacks import flush_langfuse, get_langfuse_handler
 from agent.config import get_config
 from agent.prompts import get_system_prompt
 from agent.state import AgentState
@@ -26,8 +29,16 @@ from agent.tools import (
 )
 
 
-def create_llm():
-    """Create the LLM instance based on configuration."""
+def create_llm(callbacks: list[BaseCallbackHandler] | None = None):
+    """
+    Create the LLM instance based on configuration.
+
+    Args:
+        callbacks: Optional list of callback handlers (e.g., Langfuse)
+
+    Returns:
+        Configured LLM instance
+    """
     config = get_config()
 
     if config.llm.provider == "anthropic":
@@ -36,6 +47,7 @@ def create_llm():
             api_key=config.llm.api_key,
             temperature=config.llm.temperature,
             max_tokens=config.llm.max_tokens,
+            callbacks=callbacks,
         )
     elif config.llm.provider == "openai":
         return ChatOpenAI(
@@ -43,6 +55,7 @@ def create_llm():
             api_key=config.llm.api_key,
             temperature=config.llm.temperature,
             max_tokens=config.llm.max_tokens,
+            callbacks=callbacks,
         )
     else:
         raise ValueError(f"Unsupported LLM provider: {config.llm.provider}")
@@ -65,17 +78,18 @@ TOOLS = [
 ]
 
 
-def agent_node(state: AgentState) -> AgentState:
+def agent_node(state: AgentState, config: RunnableConfig | None = None) -> AgentState:
     """
     Main agent node - decides which tool to call or generates final response.
 
     Args:
         state: Current agent state
+        config: RunnableConfig passed from graph invoke (contains callbacks)
 
     Returns:
         Updated state with new messages
     """
-    config = get_config()
+    app_config = get_config()
 
     # Check iteration limit
     if state["iteration_count"] >= state["max_iterations"]:
@@ -87,8 +101,11 @@ def agent_node(state: AgentState) -> AgentState:
         state["should_continue"] = False
         return state
 
-    # Create LLM with tools
-    llm = create_llm()
+    # Extract callbacks from runnable config (for Langfuse tracking)
+    callbacks = config.get("callbacks") if config else None
+
+    # Create LLM with tools and callbacks
+    llm = create_llm(callbacks=callbacks)
     llm_with_tools = llm.bind_tools(TOOLS)
 
     # Prepare messages
@@ -106,7 +123,7 @@ def agent_node(state: AgentState) -> AgentState:
     state["iteration_count"] += 1
 
     # Log for debugging
-    if config.agent.verbose:
+    if app_config.agent.verbose:
         print(f"[Agent] Iteration {state['iteration_count']}")
         print(f"[Agent] Response: {response.content[:100]}...")
         if hasattr(response, "tool_calls") and response.tool_calls:
@@ -243,11 +260,23 @@ class AnalyticsAgent:
             "should_continue": True,
         }
 
-        # Prepare config for thread persistence
-        config = {"configurable": {"thread_id": thread_id}} if thread_id else None
+        # Prepare config with thread persistence and Langfuse callbacks
+        run_config: dict = {}
+        if thread_id:
+            run_config["configurable"] = {"thread_id": thread_id}
 
-        # Run the graph with thread persistence
-        result = self.graph.invoke(initial_state, config=config)
+        # Add Langfuse callback for tracking
+        langfuse_handler = get_langfuse_handler(session_id=thread_id)
+        if langfuse_handler:
+            run_config["callbacks"] = [langfuse_handler]
+
+        # Run the graph with thread persistence and callbacks
+        result = self.graph.invoke(
+            initial_state, config=run_config if run_config else None
+        )
+
+        # Flush Langfuse events
+        flush_langfuse()
 
         # Extract final response
         messages = result.get("messages", [])
@@ -288,11 +317,20 @@ class AnalyticsAgent:
             "should_continue": True,
         }
 
-        # Prepare config for thread persistence
-        config = {"configurable": {"thread_id": thread_id}} if thread_id else None
+        # Prepare config with thread persistence and Langfuse callbacks
+        run_config: dict = {}
+        if thread_id:
+            run_config["configurable"] = {"thread_id": thread_id}
 
-        # Stream the graph execution with thread persistence
-        yield from self.graph.stream(initial_state, config=config)
+        # Add Langfuse callback for tracking
+        langfuse_handler = get_langfuse_handler(session_id=thread_id)
+        if langfuse_handler:
+            run_config["callbacks"] = [langfuse_handler]
+
+        # Stream the graph execution with thread persistence and callbacks
+        yield from self.graph.stream(
+            initial_state, config=run_config if run_config else None
+        )
 
     def get_thread_state(self, thread_id: str) -> dict | None:
         """
