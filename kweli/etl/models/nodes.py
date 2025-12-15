@@ -149,13 +149,17 @@ class LearningStateNode(BaseModel):
     - Active → Dropped Out
     - Active → Graduate
     - Inactive → Active
+
+    Records with date_unknown=True appear at the beginning of timeline
+    (treated as earliest/oldest records when sorting).
     """
 
     state: LearningState = Field(..., description="Learning state")
-    start_date: date = Field(..., description="When this state began")
+    start_date: date | None = Field(None, description="When this state began (None = unknown)")
     end_date: date | None = Field(None, description="When this state ended (NULL = current)")
     is_current: bool = Field(True, description="Is this the current state?")
     reason: str | None = Field(None, description="Reason for state change")
+    date_unknown: bool = Field(False, description="True if start_date is unknown/invalid")
 
 
 class ProfessionalStatusNode(BaseModel):
@@ -166,13 +170,17 @@ class ProfessionalStatusNode(BaseModel):
     - Unemployed → Wage Employed
     - Wage Employed → Entrepreneur
     - Freelancer → Multiple (freelance + venture)
+
+    Records with date_unknown=True appear at the beginning of timeline
+    (treated as earliest/oldest records when sorting).
     """
 
     status: ProfessionalStatus = Field(..., description="Professional status")
-    start_date: date = Field(..., description="When this status began")
+    start_date: date | None = Field(None, description="When this status began (None = unknown)")
     end_date: date | None = Field(None, description="When this status ended (NULL = current)")
     is_current: bool = Field(True, description="Is this the current status?")
     details: str | None = Field(None, description="Additional details about this status")
+    date_unknown: bool = Field(False, description="True if start_date is unknown/invalid")
 
 
 # Export all node models

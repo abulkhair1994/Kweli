@@ -44,39 +44,59 @@ class LearningStateHistoryBuilder:
         Build complete learning state history from learning_details.
 
         Logic:
-        1. Sort programs by start date
-        2. For each program:
+        1. Parse programs into two groups: with dates and without dates (date_unknown)
+        2. Programs with unknown dates are placed at the BEGINNING of timeline
+        3. Programs with dates are sorted chronologically
+        4. For each program with dates:
            - Create "Active" state at program_start_date
            - Create end state (Graduate/Dropped Out) at appropriate date
-        3. Between programs (gap > inactive_gap_months): create "Inactive" state
-        4. Final state: use current_state_flags if provided
+        5. Between programs (gap > inactive_gap_months): create "Inactive" state
+        6. Final state: use current_state_flags if provided
 
         Args:
             learning_details: List of learning details entries
             current_state_flags: Optional dict with is_active, is_graduate, is_dropped
 
         Returns:
-            List of LearningStateNode instances in chronological order
+            List of LearningStateNode instances (unknown dates first, then chronological)
         """
         if not learning_details:
             # No learning history - return empty list
             # (caller should create single snapshot state)
             return []
 
-        # Convert to parsed entries with dates
-        parsed_programs = self._parse_program_dates(learning_details)
-
-        if not parsed_programs:
-            # No valid dates found
-            return []
-
-        # Sort by start date
-        parsed_programs.sort(key=lambda p: p["start_date"])
+        # Parse programs - separates programs with and without dates
+        programs_with_dates, programs_without_dates = self._parse_program_dates(learning_details)
 
         # Build state timeline
         states: list[LearningStateNode] = []
 
-        for i, program in enumerate(parsed_programs):
+        # 1. First, add programs with unknown dates (at beginning of timeline)
+        for program in programs_without_dates:
+            end_state_type = self._determine_end_state(program["enrollment_status"])
+
+            # Create state for program with unknown date
+            state_node = LearningStateNode(
+                state=end_state_type if end_state_type != LearningState.ACTIVE else LearningState.ACTIVE,
+                start_date=None,
+                end_date=program["end_date"] or program["graduation_date"],
+                is_current=False,
+                reason=f"Enrolled in {program['program_name']} ({program['cohort_code']}) (date unknown)",
+                date_unknown=True,
+            )
+            states.append(state_node)
+
+        # 2. Process programs with known dates
+        if not programs_with_dates:
+            # Only programs without dates exist
+            if states:
+                states[-1].is_current = True
+            return states
+
+        # Sort programs with dates by start date
+        programs_with_dates.sort(key=lambda p: p["start_date"])
+
+        for i, program in enumerate(programs_with_dates):
             # Create "Active" state at program start
             active_state = LearningStateNode(
                 state=LearningState.ACTIVE,
@@ -84,6 +104,7 @@ class LearningStateHistoryBuilder:
                 end_date=None,  # Will be updated later
                 is_current=False,  # Will be updated for last state
                 reason=f"Enrolled in {program['program_name']} ({program['cohort_code']})",
+                date_unknown=False,
             )
 
             # Determine end state based on enrollment_status
@@ -102,6 +123,7 @@ class LearningStateHistoryBuilder:
                         end_date=None,  # Will be updated if there's a next program
                         is_current=False,
                         reason=self._get_end_reason(end_state_type, program),
+                        date_unknown=False,
                     )
                     states.extend([active_state, end_state])
                 else:
@@ -112,15 +134,15 @@ class LearningStateHistoryBuilder:
                 states.append(active_state)
 
             # Check for gap to next program (create Inactive state)
-            if i < len(parsed_programs) - 1:
-                next_program = parsed_programs[i + 1]
+            if i < len(programs_with_dates) - 1:
+                next_program = programs_with_dates[i + 1]
                 gap_days = (next_program["start_date"] - (end_date or program["start_date"])).days
 
                 # If gap > inactive_gap_months, create Inactive state
                 gap_threshold_days = self.inactive_gap_months * 30
                 if gap_days > gap_threshold_days and end_date:
                     # Close the previous end state
-                    if states and states[-1].end_date is None:
+                    if states and states[-1].end_date is None and not states[-1].date_unknown:
                         states[-1].end_date = end_date
 
                     # Create Inactive state
@@ -130,6 +152,7 @@ class LearningStateHistoryBuilder:
                         end_date=next_program["start_date"],
                         is_current=False,
                         reason=f"Gap of {gap_days} days between programs",
+                        date_unknown=False,
                     )
                     states.append(inactive_state)
 
@@ -145,7 +168,7 @@ class LearningStateHistoryBuilder:
     def _parse_program_dates(
         self,
         learning_details: list[LearningDetailsEntry],
-    ) -> list[dict]:
+    ) -> tuple[list[dict], list[dict]]:
         """
         Parse program dates and create structured program records.
 
@@ -153,35 +176,45 @@ class LearningStateHistoryBuilder:
             learning_details: List of learning details entries
 
         Returns:
-            List of parsed program dictionaries with dates
+            Tuple of (programs_with_dates, programs_without_dates)
+            - programs_with_dates: can be sorted chronologically
+            - programs_without_dates: have date_unknown=True, placed at beginning
         """
-        parsed = []
+        with_dates = []
+        without_dates = []
 
         for entry in learning_details:
-            # Parse start date (required)
+            # Parse start date
             start_date = self.date_converter.convert_date(entry.program_start_date)
-            if not start_date:
-                self.logger.warning(
-                    "Skipping program with invalid start_date",
+            date_unknown = start_date is None
+
+            if date_unknown:
+                self.logger.debug(
+                    "Program with unknown start_date (will be included)",
                     program_name=entry.program_name,
-                    start_date=entry.program_start_date,
+                    original_date=entry.program_start_date,
                 )
-                continue
 
             # Parse end dates (optional)
             end_date = self.date_converter.convert_date(entry.program_end_date)
             graduation_date = self.date_converter.convert_date(entry.program_graduation_date)
 
-            parsed.append({
+            program_record = {
                 "program_name": entry.program_name,
                 "cohort_code": entry.cohort_code,
                 "start_date": start_date,
                 "end_date": end_date,
                 "graduation_date": graduation_date,
                 "enrollment_status": entry.enrollment_status.strip() if entry.enrollment_status else "",
-            })
+                "date_unknown": date_unknown,
+            }
 
-        return parsed
+            if date_unknown:
+                without_dates.append(program_record)
+            else:
+                with_dates.append(program_record)
+
+        return with_dates, without_dates
 
     def _determine_end_state(self, enrollment_status: str) -> LearningState:
         """

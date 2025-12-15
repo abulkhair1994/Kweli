@@ -1,9 +1,47 @@
 # Impact Learners ETL Configuration
 
+# =============================================================================
+# Data Source Configuration
+# =============================================================================
+data_source:
+  # Source type: "csv" or "mysql"
+  type: "csv"  # Change to "mysql" for production
+
+  # CSV source configuration
+  csv:
+    path: "data/raw/impact_learners_profile-1759316791571.csv"
+
+  # MySQL source configuration
+  # Note: Credentials should be in environment variables, not here
+  mysql:
+    host: "prod-impact-tracking-mysql.cylzdy8g0gui.eu-west-1.rds.amazonaws.com"
+    port: 3306
+    database: "prod_impact_tracking"
+    table: "impact_learners_profile"
+    use_ssl: true
+    connection_timeout: 120  # Connection establishment timeout
+    read_timeout: 3600  # 1 hour - streaming keeps connection open
+    pool_size: 3
+    max_retries: 3  # Retry transient MySQL failures
+    retry_delay: 5.0  # Initial retry delay (exponential backoff)
+
+    # Read mode: "streaming" (recommended) or "offset"
+    # - streaming: Single table scan with unbuffered cursor, O(N) time
+    #              Best for tables WITHOUT indexes (like this one!)
+    # - offset: LIMIT/OFFSET pagination, O(N²) time for unindexed tables
+    read_mode: "streaming"
+
+  # Common settings
+  # Note: Larger chunks are fine with streaming mode
+  chunk_size: 10000  # Larger chunks with streaming mode
+
+# =============================================================================
+# ETL Pipeline Configuration
+# =============================================================================
 etl:
   chunk_size: 50000  # Rows to process per chunk (5x increase for performance)
   batch_size: 5000   # Records to send to Neo4j per batch (5x increase for performance)
-  num_workers: 8     # Parallel workers for batch flushing (optimized for multi-core)
+  num_workers: 1     # Single worker to prevent relationship deadlocks on shared entities
 
   # Resume capability
   enable_checkpoints: true
@@ -13,20 +51,29 @@ etl:
   enable_progress_bar: false  # Disabled for maximum performance
   log_interval: 10000  # Log progress every N rows (reduced frequency)
 
+# =============================================================================
+# Neo4j Configuration
+# =============================================================================
+# For Aura, use neo4j+s:// scheme (encrypted)
+# Credentials should be in environment variables: NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD
 neo4j:
-  # Connection details
-  uri: "bolt://localhost:7688"
+  # Connection details (can be overridden by environment variables)
+  uri: "bolt://localhost:7688"  # For Aura: "neo4j+s://xxxx.databases.neo4j.io"
   user: "neo4j"
-  password: "password123"
+  password: "password123"  # Override with NEO4J_PASSWORD env var
 
-  # Connection pooling
-  max_connection_pool_size: 100  # Increased for parallel operations (num_workers * 10+)
+  # Connection pooling (optimized for cloud)
+  max_connection_pool_size: 30  # Reduced for cloud latency
   connection_timeout: 30  # seconds
-  max_transaction_retry_time: 30  # seconds
+  max_transaction_retry_time: 60  # seconds (increased for cloud)
 
-  # Batch operations
-  batch_size: 5000  # Match ETL batch size for optimal performance
-  batch_timeout: 90  # seconds (increased for larger batches)
+  # Batch operations (optimized for cloud)
+  batch_size: 1000  # Reduced from 5000 for cloud latency
+  batch_timeout: 90  # seconds
+
+  # Retry settings for transient errors
+  max_retries: 3
+  retry_delay: 1.0  # Initial delay, uses exponential backoff
 
 validation:
   # Data quality thresholds

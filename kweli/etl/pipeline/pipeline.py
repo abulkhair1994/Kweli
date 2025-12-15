@@ -25,20 +25,21 @@ class ETLPipeline:
 
     def __init__(
         self,
-        csv_path: Path | str,
-        connection: Neo4jConnection,
+        csv_path: Path | str | None = None,
+        connection: Neo4jConnection = None,
         chunk_size: int = 10000,
         batch_size: int = 1000,
         checkpoint_interval: int = 5000,
         enable_progress_bar: bool = True,
         resume_from_checkpoint: bool = False,
         logger: FilteringBoundLogger | None = None,
+        extractor: "Extractor | None" = None,
     ) -> None:
         """
         Initialize ETL pipeline.
 
         Args:
-            csv_path: Path to CSV file
+            csv_path: Path to CSV file (required if extractor not provided)
             connection: Neo4j connection
             chunk_size: Rows per chunk for CSV reading
             batch_size: Batch size for Neo4j operations
@@ -46,8 +47,9 @@ class ETLPipeline:
             enable_progress_bar: Show rich progress bar
             resume_from_checkpoint: Resume from last checkpoint
             logger: Optional logger instance
+            extractor: Optional pre-configured extractor (for MySQL support)
         """
-        self.csv_path = Path(csv_path)
+        self.csv_path = Path(csv_path) if csv_path else None
         self.connection = connection
         self.chunk_size = chunk_size
         self.batch_size = batch_size
@@ -56,8 +58,13 @@ class ETLPipeline:
         self.resume_from_checkpoint = resume_from_checkpoint
         self.logger = logger or get_logger(__name__)
 
-        # Initialize components
-        self.extractor = Extractor(csv_path, chunk_size, logger)
+        # Initialize components - use provided extractor or create from CSV path
+        if extractor is not None:
+            self.extractor = extractor
+        elif csv_path is not None:
+            self.extractor = Extractor(source_type="csv", csv_path=csv_path, chunk_size=chunk_size, logger=logger)
+        else:
+            raise ValueError("Either csv_path or extractor must be provided")
         self.transformer = Transformer(logger)
         self.loader = Loader(connection, logger)
         self.validator = DataQualityChecker(logger=logger)

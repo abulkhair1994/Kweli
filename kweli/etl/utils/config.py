@@ -4,7 +4,10 @@ Configuration management for the ETL pipeline.
 Loads settings from YAML files and environment variables.
 """
 
+from __future__ import annotations
+
 import json
+import os
 from pathlib import Path
 
 import yaml
@@ -28,9 +31,11 @@ class Neo4jConfig(BaseModel):
 
     max_connection_pool_size: int = Field(50, description="Max connection pool size")
     connection_timeout: int = Field(30, description="Connection timeout in seconds")
-    max_transaction_retry_time: int = Field(30, description="Max retry time in seconds")
+    max_transaction_retry_time: int = Field(60, description="Max retry time in seconds")
     batch_size: int = Field(1000, description="Batch size for operations")
     batch_timeout: int = Field(60, description="Batch timeout in seconds")
+    max_retries: int = Field(3, description="Max retries for transient errors")
+    retry_delay: float = Field(1.0, description="Initial delay between retries")
 
 
 class ValidationConfig(BaseModel):
@@ -99,6 +104,59 @@ class TransformersConfig(BaseModel):
     temporal: TemporalConfig = Field(default_factory=TemporalConfig)
 
 
+class MySQLConfig(BaseModel):
+    """MySQL connection configuration."""
+
+    host: str = Field("", description="MySQL server hostname")
+    port: int = Field(3306, description="MySQL port")
+    database: str = Field("", description="Database name")
+    table: str = Field("impact_learners_profile", description="Table to read from")
+    user: str = Field("", description="MySQL username")
+    password: str = Field("", description="MySQL password (from environment)")
+    use_ssl: bool = Field(True, description="Use SSL for connection")
+    connection_timeout: int = Field(30, description="Connection timeout in seconds")
+    read_timeout: int = Field(120, description="Read timeout for large queries")
+    pool_size: int = Field(3, description="Connection pool size")
+
+    @classmethod
+    def from_env(cls) -> MySQLConfig:
+        """
+        Load MySQL configuration from environment variables.
+
+        Environment variables:
+            MYSQL_HOST: MySQL server hostname
+            MYSQL_PORT: MySQL port (default 3306)
+            MYSQL_DATABASE: Database name
+            MYSQL_TABLE: Table name (default impact_learners_profile)
+            MYSQL_USER: MySQL username
+            MYSQL_PASSWORD: MySQL password
+        """
+        return cls(
+            host=os.getenv("MYSQL_HOST", ""),
+            port=int(os.getenv("MYSQL_PORT", "3306")),
+            database=os.getenv("MYSQL_DATABASE", ""),
+            table=os.getenv("MYSQL_TABLE", "impact_learners_profile"),
+            user=os.getenv("MYSQL_USER", ""),
+            password=os.getenv("MYSQL_PASSWORD", ""),
+            use_ssl=os.getenv("MYSQL_USE_SSL", "true").lower() == "true",
+        )
+
+
+class DataSourceConfig(BaseModel):
+    """Data source configuration supporting multiple source types."""
+
+    type: str = Field("csv", description="Data source type: csv or mysql")
+
+    # CSV configuration
+    csv_path: str | None = Field(None, description="Path to CSV file")
+
+    # MySQL configuration (loaded from environment for security)
+    mysql: MySQLConfig = Field(default_factory=MySQLConfig)
+
+    # Common settings
+    chunk_size: int = Field(10000, description="Rows per chunk")
+
+
 class Settings(BaseModel):
     """Complete application settings."""
 
@@ -106,6 +164,7 @@ class Settings(BaseModel):
     neo4j: Neo4jConfig = Field(default_factory=Neo4jConfig)
     validation: ValidationConfig = Field(default_factory=ValidationConfig)
     transformers: TransformersConfig = Field(default_factory=TransformersConfig)
+    data_source: DataSourceConfig = Field(default_factory=DataSourceConfig)
 
 
 class ConfigLoader:

@@ -48,13 +48,15 @@ class ProfessionalStatusHistoryBuilder:
         Build complete professional status history from employment_details.
 
         Logic:
-        1. Sort employment by start date
-        2. Create initial "Unemployed" state (if enabled)
-        3. For each employment:
+        1. Parse jobs into two groups: with dates and without dates (date_unknown)
+        2. Jobs with unknown dates are placed at the BEGINNING of timeline
+        3. Jobs with dates are sorted chronologically
+        4. Create initial "Unemployed" state (if enabled)
+        5. For each employment with dates:
            - Create status at start_date (Wage Employed/Entrepreneur/Freelancer)
            - If gap > unemployment_gap_months from previous: create "Unemployed" in between
-        4. After last employment ends: create "Unemployed"
-        5. Use current_status_flags for final state
+        6. After last employment ends: create "Unemployed"
+        7. Use current_status_flags for final state
 
         Args:
             employment_details: List of employment details entries
@@ -62,38 +64,55 @@ class ProfessionalStatusHistoryBuilder:
             placement_is_venture: Whether placement is a venture
 
         Returns:
-            List of ProfessionalStatusNode instances in chronological order
+            List of ProfessionalStatusNode instances (unknown dates first, then chronological)
         """
         if not employment_details:
             # No employment history - return empty list or initial unemployed
             if self.infer_initial_unemployment:
                 return [self._create_unemployed_node(
-                    start_date=None,  # Use snapshot date in caller
+                    start_date=None,
                     details="No employment history",
                 )]
             return []
 
-        # Parse employment entries with dates
-        parsed_jobs = self._parse_employment_dates(employment_details, placement_is_venture)
-
-        if not parsed_jobs:
-            # No valid dates found
-            if self.infer_initial_unemployment:
-                return [self._create_unemployed_node(
-                    start_date=None,
-                    details="No valid employment dates",
-                )]
-            return []
-
-        # Sort by start date
-        parsed_jobs.sort(key=lambda j: j["start_date"])
+        # Parse employment entries - separates jobs with and without dates
+        jobs_with_dates, jobs_without_dates = self._parse_employment_dates(
+            employment_details, placement_is_venture
+        )
 
         # Build status timeline
         statuses: list[ProfessionalStatusNode] = []
 
-        # Initial unemployed state (before first job)
-        if self.infer_initial_unemployment:
-            first_job_start = parsed_jobs[0]["start_date"]
+        # 1. First, add jobs with unknown dates (at beginning of timeline)
+        for job in jobs_without_dates:
+            status_node = ProfessionalStatusNode(
+                status=job["employment_type"],
+                start_date=None,
+                end_date=job["end_date"],
+                is_current=job["is_current"] and not jobs_with_dates,
+                details=f"{job['job_title']} at {job['organization_name']} (date unknown)",
+                date_unknown=True,
+            )
+            statuses.append(status_node)
+
+        # 2. Process jobs with known dates
+        if not jobs_with_dates:
+            # Only jobs without dates exist
+            if statuses:
+                statuses[-1].is_current = True
+            elif self.infer_initial_unemployment:
+                return [self._create_unemployed_node(
+                    start_date=None,
+                    details="No valid employment dates",
+                )]
+            return statuses
+
+        # Sort jobs with dates by start date
+        jobs_with_dates.sort(key=lambda j: j["start_date"])
+
+        # Initial unemployed state (before first dated job)
+        if self.infer_initial_unemployment and not jobs_without_dates:
+            first_job_start = jobs_with_dates[0]["start_date"]
             unemployed_start = self._calculate_unemployed_start(first_job_start)
 
             initial_unemployed = ProfessionalStatusNode(
@@ -105,11 +124,11 @@ class ProfessionalStatusHistoryBuilder:
             )
             statuses.append(initial_unemployed)
 
-        # Process each employment
-        for i, job in enumerate(parsed_jobs):
+        # Process each employment with dates
+        for i, job in enumerate(jobs_with_dates):
             # Check for unemployment gap from previous job
             if i > 0:
-                prev_job = parsed_jobs[i - 1]
+                prev_job = jobs_with_dates[i - 1]
                 prev_end = prev_job["end_date"] or date.today()
                 current_start = job["start_date"]
 
@@ -119,7 +138,7 @@ class ProfessionalStatusHistoryBuilder:
                 gap_threshold_days = self.unemployment_gap_months * 30
                 if gap_days > gap_threshold_days:
                     # Close previous status if still open
-                    if statuses and statuses[-1].end_date is None:
+                    if statuses and statuses[-1].end_date is None and not statuses[-1].date_unknown:
                         statuses[-1].end_date = prev_end
 
                     unemployed_gap = ProfessionalStatusNode(
@@ -136,7 +155,7 @@ class ProfessionalStatusHistoryBuilder:
             statuses.append(employment_status)
 
         # After last job: if it ended and no current employment, create unemployed
-        last_job = parsed_jobs[-1]
+        last_job = jobs_with_dates[-1]
         if last_job["end_date"] and not last_job["is_current"]:
             # Check if there's a current status from flags
             if current_status_flags:
@@ -147,7 +166,7 @@ class ProfessionalStatusHistoryBuilder:
                 # Only create unemployed if current status is actually unemployed
                 if current_status == ProfessionalStatus.UNEMPLOYED:
                     # Close last employment status
-                    if statuses and statuses[-1].end_date is None:
+                    if statuses and statuses[-1].end_date is None and not statuses[-1].date_unknown:
                         statuses[-1].end_date = last_job["end_date"]
 
                     final_unemployed = ProfessionalStatusNode(
@@ -161,7 +180,7 @@ class ProfessionalStatusHistoryBuilder:
                 else:
                     # Has current employment not in employment_details (e.g., from placement)
                     # Close last employment status
-                    if statuses and statuses[-1].end_date is None:
+                    if statuses and statuses[-1].end_date is None and not statuses[-1].date_unknown:
                         statuses[-1].end_date = last_job["end_date"]
 
                     # Create current status
@@ -175,7 +194,7 @@ class ProfessionalStatusHistoryBuilder:
                     statuses.append(current_node)
             else:
                 # No flags, assume unemployed after last job ended
-                if statuses and statuses[-1].end_date is None:
+                if statuses and statuses[-1].end_date is None and not statuses[-1].date_unknown:
                     statuses[-1].end_date = last_job["end_date"]
 
                 final_unemployed = ProfessionalStatusNode(
@@ -197,7 +216,7 @@ class ProfessionalStatusHistoryBuilder:
         self,
         employment_details: list[EmploymentDetailsEntry],
         placement_is_venture: bool = False,
-    ) -> list[dict]:
+    ) -> tuple[list[dict], list[dict]]:
         """
         Parse employment dates and create structured job records.
 
@@ -206,20 +225,24 @@ class ProfessionalStatusHistoryBuilder:
             placement_is_venture: Whether placement is a venture
 
         Returns:
-            List of parsed job dictionaries with dates
+            Tuple of (jobs_with_dates, jobs_without_dates)
+            - jobs_with_dates: can be sorted chronologically
+            - jobs_without_dates: have date_unknown=True, placed at beginning
         """
-        parsed = []
+        with_dates = []
+        without_dates = []
 
         for entry in employment_details:
-            # Parse start date (required)
+            # Parse start date
             start_date = self.date_converter.convert_date(entry.start_date)
-            if not start_date:
-                self.logger.warning(
-                    "Skipping job with invalid start_date",
+            date_unknown = start_date is None
+
+            if date_unknown:
+                self.logger.debug(
+                    "Job with unknown start_date (will be included)",
                     organization_name=entry.organization_name,
-                    start_date=entry.start_date,
+                    original_date=entry.start_date,
                 )
-                continue
 
             # Parse end date (optional)
             end_date = self.date_converter.convert_date(entry.end_date)
@@ -239,16 +262,22 @@ class ProfessionalStatusHistoryBuilder:
                 placement_is_venture,
             )
 
-            parsed.append({
+            job_record = {
                 "organization_name": entry.organization_name,
                 "job_title": entry.job_title,
                 "start_date": start_date,
                 "end_date": end_date,
                 "is_current": is_current,
                 "employment_type": employment_type,
-            })
+                "date_unknown": date_unknown,
+            }
 
-        return parsed
+            if date_unknown:
+                without_dates.append(job_record)
+            else:
+                with_dates.append(job_record)
+
+        return with_dates, without_dates
 
     def _classify_employment_type(
         self,
@@ -311,12 +340,18 @@ class ProfessionalStatusHistoryBuilder:
         Returns:
             ProfessionalStatusNode
         """
+        date_unknown = job.get("date_unknown", False)
+        details = f"{job['job_title']} at {job['organization_name']}"
+        if date_unknown:
+            details += " (date unknown)"
+
         return ProfessionalStatusNode(
             status=job["employment_type"],
             start_date=job["start_date"],
             end_date=job["end_date"],
             is_current=job["is_current"],
-            details=f"{job['job_title']} at {job['organization_name']}",
+            details=details,
+            date_unknown=date_unknown,
         )
 
     def _create_unemployed_node(

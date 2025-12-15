@@ -100,18 +100,19 @@ class JSONParser:
     def parse_placement_details(
         self,
         value: str | None,
-        is_venture: bool = False,
+        is_venture: bool | None = None,
     ) -> PlacementDetailsWageEmployment | PlacementDetailsVenture | None:
         """
         Parse placement_details JSON.
 
         Handles two different schemas:
-        - Wage/Freelance: employment_type, job_start_date, organisation_name, etc.
-        - Venture: business_name, jobs_created_to_date, capital_secured_todate, etc.
+        - Wage/Freelance: has organisation_name field
+        - Venture: has business_name field
 
         Args:
             value: JSON string
-            is_venture: If True, parse as venture schema
+            is_venture: If True, force venture schema. If False, force wage.
+                       If None (default), auto-detect based on field presence.
 
         Returns:
             Parsed placement details or None
@@ -123,13 +124,22 @@ class JSONParser:
         # Take first entry
         item = parsed[0]
 
+        # Auto-detect type based on field presence if not specified
+        if is_venture is None:
+            # Venture entries have business_name, wage entries have organisation_name
+            has_business_name = "business_name" in item and item.get("business_name")
+            has_venture_metrics = any(
+                k in item for k in ["jobs_created_to_date", "capital_secured_todate", "female_opp_todate"]
+            )
+            is_venture = has_business_name or has_venture_metrics
+
         try:
             if is_venture:
                 return PlacementDetailsVenture(**item)
             else:
                 return PlacementDetailsWageEmployment(**item)
         except ValidationError as e:
-            self.logger.warning(
+            self.logger.debug(
                 "Failed to validate placement details",
                 item=item,
                 is_venture=is_venture,

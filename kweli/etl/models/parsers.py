@@ -39,23 +39,31 @@ class LearningDetailsEntry(BaseModel):
 
 
 class PlacementDetailsWageEmployment(BaseModel):
-    """placement_details JSON for wage/freelance employment."""
+    """placement_details JSON for wage/freelance employment.
 
-    employment_type: str = Field(..., description="Employment type")
+    Only job_start_date is required. All other fields are optional
+    to handle data variations in the source.
+    """
+
     job_start_date: str = Field(..., description="Job start date")
-    organisation_name: str = Field(..., description="Organization name")
-    salary_range: str = Field(..., description="Salary range")
-    job_title: str = Field(..., description="Job title")
+    organisation_name: str | None = Field(None, description="Organization name")
+    employment_type: str | None = Field(None, description="Employment type")
+    salary_range: str | None = Field(None, description="Salary range")
+    job_title: str | None = Field(None, description="Job title")
 
 
 class PlacementDetailsVenture(BaseModel):
-    """placement_details JSON for entrepreneurs/ventures."""
+    """placement_details JSON for entrepreneurs/ventures.
 
-    business_name: str = Field(..., description="Business/venture name")
+    Only job_start_date is required. All other fields are optional
+    to handle data variations in the source.
+    """
+
     job_start_date: str = Field(..., description="Venture start date")
-    jobs_created_to_date: int = Field(..., description="Jobs created")
-    capital_secured_todate: float = Field(..., description="Capital secured")
-    female_opp_todate: int = Field(..., description="Female opportunities created")
+    business_name: str | None = Field(None, description="Business/venture name")
+    jobs_created_to_date: int | None = Field(None, description="Jobs created")
+    capital_secured_todate: float | None = Field(None, description="Capital secured")
+    female_opp_todate: int | None = Field(None, description="Female opportunities created")
 
 
 class EmploymentDetailsEntry(BaseModel):
